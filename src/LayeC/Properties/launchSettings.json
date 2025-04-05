@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "LayeC": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\Nashiora\\laye-dev\\layec-dotnet\\test\\test.laye"
+    }
+  }
+}

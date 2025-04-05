@@ -1,0 +1,5 @@
+pragma "C" {
+    int foo();
+}
+
+int bar();
