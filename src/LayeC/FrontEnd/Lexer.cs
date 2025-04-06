@@ -1,7 +1,7 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics;
+using System.Numerics;
 using System.Text;
 
-using LayeC.FrontEnd.C.Preprocess;
 using LayeC.Source;
 
 namespace LayeC.FrontEnd;
@@ -23,24 +23,16 @@ public enum LexerState
     CPPHasHeaderNames = 1 << 1,
 }
 
-public sealed class Lexer
+public sealed class Lexer(CompilerContext context, SourceText source, LanguageOptions languageOptions,
+    SourceLanguage language = SourceLanguage.Laye)
 {
-    public CompilerContext Context { get; }
-    public SourceText Source { get; }
+    public CompilerContext Context { get; } = context;
+    public SourceText Source { get; } = source;
 
-    public LanguageOptions LanguageOptions { get; }
-    
-    public SourceLanguage Language { get; private set; }
-    public LexerState State { get; private set; } = LexerState.None;
+    public LanguageOptions LanguageOptions { get; } = languageOptions;
 
-    internal Lexer(CompilerContext context, SourceText source, LanguageOptions languageOptions,
-        SourceLanguage language = SourceLanguage.Laye)
-    {
-        Context = context;
-        Source = source;
-        LanguageOptions = languageOptions;
-        Language = language;
-    }
+    public SourceLanguage Language { get; private set; } = language;
+    private LexerState State { get; set; } = LexerState.None;
 
     #region Source Character Processing
 
@@ -199,7 +191,8 @@ public sealed class Lexer
                     _trivia.Add(new TriviumWhiteSpace(GetRange(beginLocation)));
                 } break;
 
-                case '/' when PeekCharacter(1) == '/':
+                // line comments are not available in C89 without extensions enabled. Laye is fine.
+                case '/' when PeekCharacter(1) == '/' && (Language == SourceLanguage.Laye || LanguageOptions.CHasLineComments):
                 {
                     Advance(2);
                     while (!IsAtEnd && CurrentCharacter is not '\n')
@@ -219,6 +212,7 @@ public sealed class Lexer
                             Advance(2);
                             depth--;
                         }
+                        // don't handle nested delimited comments in C, only in Laye.
                         else if (Language == SourceLanguage.Laye && CurrentCharacter == '/' && PeekCharacter(1) == '*')
                         {
                             Advance(2);
@@ -247,7 +241,7 @@ public sealed class Lexer
                 default: goto return_trivia;
             }
 
-            Context.Assert(_readPosition > beginLocation.Offset, Source, beginLocation, $"{nameof(CLexer)}::{nameof(ReadTrivia)} failed to consume any non-trivia characters from the source text and did not return the current list of trivia if required.");
+            Context.Assert(_readPosition > beginLocation.Offset, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadTrivia)} failed to consume any non-trivia characters from the source text and did not return the current list of trivia if required.");
         }
 
         if (_trivia.Count == 0)
@@ -264,7 +258,7 @@ public sealed class Lexer
 
     #region Tokens
 
-    private Token ReadNextTokenRaw()
+    public Token ReadNextPPToken()
     {
         var leadingTrivia = ReadTrivia(isLeading: true);
         var beginLocation = CurrentLocation;
@@ -284,14 +278,19 @@ public sealed class Lexer
 
         var tokenKind = TokenKind.Invalid;
         var tokenLanguage = Language;
+        bool isAtStartOfLine = _isAtStartOfLine;
 
-        switch (CurrentCharacter)
+        _isAtStartOfLine = false;
+
+        char c = CurrentCharacter;
+        Advance();
+
+        switch (c)
         {
             case '\n' when State.HasFlag(LexerState.CPPWithinDirective):
             {
                 Context.Assert(Language == SourceLanguage.C, Source, CurrentLocation, "Should only be within a preprocessing directive when lexing for C.");
-                Advance();
-                tokenKind = TokenKind.DirectiveEnd;
+                tokenKind = TokenKind.CPPDirectiveEnd;
             } break;
 
             case '<' when State.HasFlag(LexerState.CPPHasHeaderNames):
@@ -299,9 +298,8 @@ public sealed class Lexer
                 Context.Assert(Language == SourceLanguage.C, Source, CurrentLocation, "Should only be accepting a header name when lexing for C.");
 
                 var tokenTextBuilder = new StringBuilder();
-                tokenKind = TokenKind.HeaderName;
+                tokenKind = TokenKind.CPPHeaderName;
 
-                Advance();
                 while (!IsAtEnd && CurrentCharacter is not '>')
                 {
                     tokenTextBuilder.Append(CurrentCharacter);
@@ -314,178 +312,56 @@ public sealed class Lexer
                 stringValue = tokenTextBuilder.ToString();
             } break;
 
-            case '(': Advance(); tokenKind = TokenKind.OpenParen; break;
-            case ')': Advance(); tokenKind = TokenKind.CloseParen; break;
-            case '[': Advance(); tokenKind = TokenKind.OpenSquare; break;
-            case ']': Advance(); tokenKind = TokenKind.CloseSquare; break;
-            case '{': Advance(); tokenKind = TokenKind.OpenCurly; break;
-            case '}': Advance(); tokenKind = TokenKind.CloseCurly; break;
-            case ';': Advance(); tokenKind = TokenKind.SemiColon; break;
-            case '?': Advance(); tokenKind = TokenKind.Question; break;
-            case '~': Advance(); tokenKind = TokenKind.Tilde; break;
-
-            case '!':
+            case >= '0' and <= '9' when Language == SourceLanguage.C:
+            case '.' when CurrentCharacter is >= '0' and <= '9' && Language == SourceLanguage.C:
             {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.BangEqual;
-                else tokenKind = TokenKind.Bang;
-            } break;
-
-            case '#':
-            {
-                Advance();
-                if (TryAdvance('#'))
-                    tokenKind = TokenKind.PoundPound;
-                else tokenKind = TokenKind.Pound;
-            } break;
-
-            case '%':
-            {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.PercentEqual;
-                else tokenKind = TokenKind.Percent;
-            } break;
-
-            case '&':
-            {
-                Advance();
-                if (TryAdvance('&'))
-                    tokenKind = TokenKind.AmpersandAmpersand;
-                else if (TryAdvance('='))
-                    tokenKind = TokenKind.AmpersandEqual;
-                else tokenKind = TokenKind.Ampersand;
-            } break;
-
-            case '*':
-            {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.StarEqual;
-                else tokenKind = TokenKind.Star;
-            } break;
-
-            case '+':
-            {
-                Advance();
-                if (TryAdvance('+'))
-                    tokenKind = TokenKind.PlusPlus;
-                else if (TryAdvance('='))
-                    tokenKind = TokenKind.PlusEqual;
-                else tokenKind = TokenKind.Plus;
-            } break;
-
-            case '-':
-            {
-                Advance();
-                if (TryAdvance('-'))
-                    tokenKind = TokenKind.MinusMinus;
-                else if (TryAdvance('='))
-                    tokenKind = TokenKind.MinusEqual;
-                else if (TryAdvance('>'))
-                    tokenKind = TokenKind.MinusGreater;
-                else tokenKind = TokenKind.Minus;
-            } break;
-
-            case '.':
-            {
-                Advance();
-                if (CurrentCharacter is '.' && PeekCharacter(1) is '.')
+                tokenKind = TokenKind.CPPNumber;
+                while (!IsAtEnd)
                 {
-                    Advance(2);
-                    tokenKind = TokenKind.DotDotDot;
+                    if (CurrentCharacter is '.')
+                        Advance();
+                    else if (CurrentCharacter is '\'' && PeekCharacter(1) is (>= '0' and <= '9') or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '$')
+                        Advance(2);
+                    else if (CurrentCharacter is 'e' or 'E' or 'p' or 'P' && PeekCharacter(1) is '+' or '-')
+                        Advance(2);
+                    else if (SyntaxFacts.IsCIdentifierContinue(CurrentCharacter))
+                        Advance();
+                    else break;
                 }
-                else tokenKind = TokenKind.Dot;
             } break;
 
-            case '/':
+            case '"' or '\'':
             {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.SlashEqual;
-                else tokenKind = TokenKind.Slash;
-            } break;
+                char delimiter = c;
 
-            case ':':
-            {
-                Advance();
-                if (TryAdvance(':'))
-                    tokenKind = TokenKind.ColonColon;
-                else tokenKind = TokenKind.Colon;
-            } break;
-
-            case '<':
-            {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.LessEqual;
-                else if (TryAdvance('<'))
-                {
-                    if (TryAdvance('='))
-                        tokenKind = TokenKind.LessLessEqual;
-                    else tokenKind = TokenKind.LessLess;
-                }
-                else tokenKind = TokenKind.Less;
-            } break;
-
-            case '=':
-            {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.EqualEqual;
-                else tokenKind = TokenKind.Equal;
-            } break;
-
-            case '>':
-            {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.GreaterEqual;
-                else if (TryAdvance('>'))
-                {
-                    if (TryAdvance('='))
-                        tokenKind = TokenKind.GreaterGreaterEqual;
-                    else tokenKind = TokenKind.GreaterGreater;
-                }
-                else tokenKind = TokenKind.Greater;
-            } break;
-
-            case '^':
-            {
-                Advance();
-                if (TryAdvance('='))
-                    tokenKind = TokenKind.CaretEqual;
-                else tokenKind = TokenKind.Caret;
-            } break;
-
-            case '|':
-            {
-                Advance();
-                if (TryAdvance('|'))
-                    tokenKind = TokenKind.PipePipe;
-                else if (TryAdvance('='))
-                    tokenKind = TokenKind.PipeEqual;
-                else tokenKind = TokenKind.Pipe;
-            } break;
-
-            case '"':
-            {
                 var tokenTextBuilder = new StringBuilder();
-                tokenKind = TokenKind.LiteralString;
+                tokenKind = delimiter == '"' ? TokenKind.LiteralString : TokenKind.LiteralCharacter;
 
-                Advance();
-                while (!IsAtEnd && CurrentCharacter != '"')
+                while (!IsAtEnd && CurrentCharacter != delimiter)
                 {
-                    if (CurrentCharacter == '\\')
+                    if (CurrentCharacter == '\n')
+                    {
+                        Context.ErrorUnclosedStringOrCharacterLiteral(Source, CurrentLocation, delimiter == '"' ? "string" : "character");
+                        goto done_lexing_string_or_character;
+                    }
+                    else if (CurrentCharacter == '\\')
                     {
                         var escapeLocation = CurrentLocation;
                         Advance();
 
                         switch (CurrentCharacter)
                         {
-                            case '\\': Advance(); tokenTextBuilder.Append('\\'); break;
                             case 'n': Advance(); tokenTextBuilder.Append('\n'); break;
+                            case 'r': Advance(); tokenTextBuilder.Append('\r'); break;
+                            case 't': Advance(); tokenTextBuilder.Append('\t'); break;
+                            case 'b': Advance(); tokenTextBuilder.Append('\b'); break;
+                            case 'f': Advance(); tokenTextBuilder.Append('\f'); break;
+                            case 'a': Advance(); tokenTextBuilder.Append('\a'); break;
+                            case 'v': Advance(); tokenTextBuilder.Append('\v'); break;
+                            case '0': Advance(); tokenTextBuilder.Append('\0'); break;
+                            case '\\': Advance(); tokenTextBuilder.Append('\\'); break;
+                            case '\"': Advance(); tokenTextBuilder.Append('\"'); break;
+                            case '\'': Advance(); tokenTextBuilder.Append('\''); break;
                             default: Context.ErrorUnrecognizedEscapeSequence(Source, escapeLocation); break;
                         }
                     }
@@ -496,27 +372,181 @@ public sealed class Lexer
                     }
                 }
 
-                if (!TryAdvance('"'))
-                    Context.ErrorExpectedMatchingCloseDelimiter(Source, '"', '"', CurrentLocation, beginLocation);
+                if (!TryAdvance(delimiter))
+                    Context.ErrorExpectedMatchingCloseDelimiter(Source, delimiter, delimiter, CurrentLocation, beginLocation);
+
+            done_lexing_string_or_character:;
+                if (delimiter == '\'' && tokenTextBuilder.Length != 1)
+                    Context.ErrorTooManyCharactersInCharacterLiteral(Source, beginLocation);
 
                 stringValue = tokenTextBuilder.ToString();
             } break;
 
-            case '_' or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'):
+            case (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '$':
             {
+                Context.Assert(SyntaxFacts.IsIdentifierStart(Language, c), $"Inline pattern failed for expected identifier start character '{c}'.");
+
                 var tokenTextBuilder = new StringBuilder();
-                tokenTextBuilder.Append(CurrentCharacter);
+                tokenTextBuilder.Append(c);
 
-                tokenKind = TokenKind.Identifier;
+                tokenKind = TokenKind.CPPIdentifier;
 
-                Advance();
-                while (CurrentCharacter is '_' or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9'))
+                while (SyntaxFacts.IsIdentifierContinue(Language, CurrentCharacter))
                 {
                     tokenTextBuilder.Append(CurrentCharacter);
                     Advance();
                 }
 
                 stringValue = tokenTextBuilder.ToString();
+            } break;
+
+            case >= '0' and <= '9':
+            {
+                Context.Assert(Language == SourceLanguage.Laye, "Should only be lexing Laye numbers here.");
+                Context.Todo("Laye Numbers");
+            } break;
+
+            case '#':
+            {
+                if (Language == SourceLanguage.C && TryAdvance('#'))
+                    tokenKind = TokenKind.HashHash;
+                else if (Language == SourceLanguage.Laye && TryAdvance('['))
+                    tokenKind = TokenKind.HashSquare;
+                else tokenKind = TokenKind.Hash;
+            } break;
+
+            case '(': tokenKind = TokenKind.OpenParen; break;
+            case ')': tokenKind = TokenKind.CloseParen; break;
+            case '[': tokenKind = TokenKind.OpenSquare; break;
+            case ']': tokenKind = TokenKind.CloseSquare; break;
+            case '{': tokenKind = TokenKind.OpenCurly; break;
+            case '}': tokenKind = TokenKind.CloseCurly; break;
+
+            case ',': tokenKind = TokenKind.Comma; break;
+            case ';': tokenKind = TokenKind.SemiColon; break;
+
+            case '.':
+            {
+                if (Language != SourceLanguage.Laye && CurrentCharacter is '.' && PeekCharacter(1) is '.')
+                {
+                    Advance(2);
+                    tokenKind = TokenKind.DotDotDot;
+                }
+                else if (Language == SourceLanguage.Laye && TryAdvance('.'))
+                {
+                    if (TryAdvance('='))
+                        tokenKind = TokenKind.DotDotEqual;
+                    else tokenKind = TokenKind.DotDot;
+                }
+                else tokenKind = TokenKind.Dot;
+            } break;
+
+            case ':': tokenKind = TryAdvance(':') ? TokenKind.ColonColon : TokenKind.Colon; break;
+            case '=':
+            {
+                if (TryAdvance('='))
+                    tokenKind = TokenKind.EqualEqual;
+                else if (Language == SourceLanguage.Laye && TryAdvance('>'))
+                    tokenKind = TokenKind.EqualGreater;
+                else tokenKind = TokenKind.Equal;
+            } break;
+
+            case '!':
+            {
+                if (TryAdvance('='))
+                    tokenKind = TokenKind.BangEqual;
+                else tokenKind = TokenKind.Bang;
+            } break;
+
+            case '<':
+            {
+                if (TryAdvance('='))
+                {
+                    if (Language == SourceLanguage.Laye && TryAdvance('>'))
+                        tokenKind = TokenKind.LessEqualGreater;
+                    else tokenKind = TokenKind.LessEqual;
+                }
+                else if (TryAdvance('<'))
+                {
+                    if (TryAdvance('='))
+                        tokenKind = TokenKind.LessLessEqual;
+                    else tokenKind = TokenKind.LessLess;
+                }
+                else tokenKind = TokenKind.Less;
+            } break;
+
+            case '>':
+            {
+                if (TryAdvance('='))
+                    tokenKind = TokenKind.GreaterEqual;
+                else if (TryAdvance('>'))
+                {
+                    if (Language == SourceLanguage.Laye && TryAdvance('>'))
+                    {
+                        if (TryAdvance('='))
+                            tokenKind = TokenKind.GreaterGreaterGreaterEqual;
+                        else tokenKind = TokenKind.GreaterGreaterGreater;
+                    }
+                    else if (TryAdvance('='))
+                        tokenKind = TokenKind.GreaterGreaterEqual;
+                    else tokenKind = TokenKind.GreaterGreater;
+                }
+                else tokenKind = TokenKind.Greater;
+            } break;
+
+            case '+':
+            {
+                if (TryAdvance('+'))
+                    tokenKind = TokenKind.PlusPlus;
+                else if (TryAdvance('='))
+                    tokenKind = TokenKind.PlusEqual;
+                else tokenKind = TokenKind.Plus;
+            } break;
+
+            case '-':
+            {
+                if (TryAdvance('-'))
+                    tokenKind = TokenKind.MinusMinus;
+                else if (TryAdvance('='))
+                    tokenKind = TokenKind.MinusEqual;
+                else if (TryAdvance('>'))
+                    tokenKind = TokenKind.MinusGreater;
+                else tokenKind = TokenKind.Minus;
+            } break;
+
+            case '*': tokenKind = TryAdvance('=') ? TokenKind.StarEqual : TokenKind.Star; break;
+            case '/': tokenKind = TryAdvance('=') ? TokenKind.SlashEqual : TokenKind.Slash; break;
+            case '%': tokenKind = TryAdvance('=') ? TokenKind.PercentEqual : TokenKind.Percent; break;
+            case '^': tokenKind = TryAdvance('=') ? TokenKind.CaretEqual : TokenKind.Caret; break;
+            case '~': tokenKind = Language == SourceLanguage.Laye && TryAdvance('=') ? TokenKind.TildeEqual : TokenKind.Tilde; break;
+
+            case '&':
+            {
+                if (TryAdvance('&'))
+                    tokenKind = TokenKind.AmpersandAmpersand;
+                else if (TryAdvance('='))
+                    tokenKind = TokenKind.AmpersandEqual;
+                else tokenKind = TokenKind.Ampersand;
+            } break;
+
+            case '|':
+            {
+                if (TryAdvance('|'))
+                    tokenKind = TokenKind.PipePipe;
+                else if (TryAdvance('='))
+                    tokenKind = TokenKind.PipeEqual;
+                else tokenKind = TokenKind.Pipe;
+            } break;
+
+            case '?':
+            {
+                if (Language == SourceLanguage.Laye && TryAdvance('?'))
+                {
+                    if (TryAdvance('='))
+                        tokenKind = TokenKind.QuestionQuestionEqual;
+                    else tokenKind = TokenKind.QuestionQuestion;
+                }
+                else tokenKind = TokenKind.Question;
             } break;
 
             default:
@@ -528,62 +558,48 @@ public sealed class Lexer
         }
 
         var tokenRange = GetRange(beginLocation);
-        Context.Assert(_readPosition > beginLocation.Offset, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadNextTokenRaw)} failed to consume any non-trivia characters from the source text and did not return an EOF token.");
-        Context.Assert(tokenKind != TokenKind.Invalid, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadNextTokenRaw)} failed to assign a non-invalid kind to the read token.");
+        Context.Assert(_readPosition > beginLocation.Offset, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadNextPPToken)} failed to consume any non-trivia characters from the source text and did not return an EOF token.");
+        Context.Assert(tokenKind != TokenKind.Invalid, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadNextPPToken)} failed to assign a non-invalid kind to the read token.");
 
         var trailingTrivia = ReadTrivia(isLeading: false);
-        return new(tokenKind, tokenLanguage, Source, tokenRange)
+
+        if (tokenLanguage == SourceLanguage.Laye && tokenKind == TokenKind.CPPIdentifier)
         {
-            StringValue = stringValue,
-            IntegerValue = integerValue,
-            FloatValue = floatValue,
-
-            LeadingTrivia = leadingTrivia,
-            TrailingTrivia = trailingTrivia,
-        };
-    }
-
-    #endregion
-
-    #region Preprocessing
-
-    public Token ReadNextToken()
-    {
-        var rawToken = ReadNextTokenRaw();
-
-        if (rawToken.Kind == TokenKind.Identifier)
-        {
-            var tokenKind = rawToken.Kind;
-            if (rawToken.StringValue == "int")
-                tokenKind = TokenKind.Int;
-            else if (rawToken.StringValue == "pragma")
-                tokenKind = TokenKind.Pragma;
-
-            if (tokenKind != rawToken.Kind)
+            if (LanguageOptions.TryGetLayeKeywordKind(stringValue, out var keywordTokenKind))
+                tokenKind = keywordTokenKind;
+            else if (stringValue.StartsWith("bool") && stringValue[4..].All(char.IsAsciiDigit))
             {
-                rawToken = new Token(tokenKind, rawToken.Language, rawToken.Source, rawToken.Range)
-                {
-                    IsAtStartOfLine = rawToken.IsAtStartOfLine,
-                    LeadingTrivia = rawToken.LeadingTrivia,
-                    TrailingTrivia = rawToken.TrailingTrivia,
-                    StringValue = rawToken.StringValue,
-                    IntegerValue = rawToken.IntegerValue,
-                    FloatValue = rawToken.FloatValue,
-                };
+                tokenKind = TokenKind.KWBoolSized;
+                integerValue = int.Parse(stringValue[4..]);
+
+#pragma warning disable IDE0078 // Use pattern matching
+                if (integerValue < 1 || integerValue >= 65535)
+                    Context.ErrorBitWidthOutOfRange(Source, beginLocation);
+#pragma warning restore IDE0078 // Use pattern matching
+            }
+            else if (stringValue.StartsWith("int") && stringValue[3..].All(char.IsAsciiDigit))
+            {
+                tokenKind = TokenKind.KWIntSized;
+                integerValue = int.Parse(stringValue[3..]);
+
+#pragma warning disable IDE0078 // Use pattern matching
+                if (integerValue < 1 || integerValue >= 65535)
+                    Context.ErrorBitWidthOutOfRange(Source, beginLocation);
+#pragma warning restore IDE0078 // Use pattern matching
             }
         }
 
-        return rawToken;
-    }
+        return new(tokenKind, tokenLanguage, Source, tokenRange)
+        {
+            IsAtStartOfLine = isAtStartOfLine,
 
-    internal void ParseDefineDirective(Token directiveStartToken, Token defineToken)
-    {
-        using var defineMode = PushMode(SourceLanguage.C, LexerState.CPPWithinDirective);
-    }
+            LeadingTrivia = leadingTrivia,
+            TrailingTrivia = trailingTrivia,
 
-    internal void ParseIncludeDirective(Token directiveStartToken, Token includeToken)
-    {
-        using var defineMode = PushMode(SourceLanguage.C, LexerState.CPPHasHeaderNames | LexerState.CPPWithinDirective);
+            StringValue = stringValue,
+            IntegerValue = integerValue,
+            FloatValue = floatValue,
+        };
     }
 
     #endregion

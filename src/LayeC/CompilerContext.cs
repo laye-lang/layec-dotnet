@@ -26,7 +26,9 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
     public DiagnosticEngine Diag { get; } = new(diagConsumer);
     public Target Target { get; } = target;
 
+#pragma warning disable IDE0060 // Remove unused parameter
     private DiagnosticLevel MapSemantic(DiagnosticSemantic semantic, string id)
+#pragma warning restore IDE0060 // Remove unused parameter
     {
         if (semantic is DiagnosticSemantic.Extension)
         {

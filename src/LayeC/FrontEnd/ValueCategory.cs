@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-namespace LayeC.FrontEnd.Semantics;
+namespace LayeC.FrontEnd;
 
 public enum ValueCategory
 {

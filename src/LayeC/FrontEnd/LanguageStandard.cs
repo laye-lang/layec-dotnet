@@ -26,6 +26,7 @@ public enum LanguageStandardKind
     C2Y,
     GNU2Y,
 
+    LayeIndev,
     Laye25,
     Laye25E,
 }
@@ -49,7 +50,8 @@ public static class LanguageStandardKindExtensions
         or LanguageStandardKind.GNU2Y
             => SL.C,
 
-           LanguageStandardKind.Laye25
+           LanguageStandardKind.LayeIndev
+        or LanguageStandardKind.Laye25
         or LanguageStandardKind.Laye25E
             => SL.Laye,
 
@@ -87,48 +89,49 @@ public sealed class LanguageStandardAlias
 
     #region C Language Standards
 
-    public static readonly LanguageStandardAlias C89          = Create("c89",            LanguageStandardKind.C89,     LanguageStandard.C89, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias C89          = Create("c89",            LanguageStandardKind.C89,     LanguageStandard.C89,  LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias C90          = Create("c90",            LanguageStandardKind.C89,     LanguageStandard.C89);
     public static readonly LanguageStandardAlias ISO9899_1990 = Create("iso9899:1990",   LanguageStandardKind.C89,     LanguageStandard.C89);
     public static readonly LanguageStandardAlias C94          = Create("iso9899:199409", LanguageStandardKind.C94,     LanguageStandard.C94);
     public static readonly LanguageStandardAlias GNU89        = Create("gnu89",          LanguageStandardKind.GNU89,   LanguageStandard.GNU89, LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias GNU90        = Create("gnu90",          LanguageStandardKind.GNU89,   LanguageStandard.GNU89);
 
-    public static readonly LanguageStandardAlias C99          = Create("c99",            LanguageStandardKind.C99,     LanguageStandard.C99, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias C99          = Create("c99",            LanguageStandardKind.C99,     LanguageStandard.C99,   LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias ISO9899_1999 = Create("iso9899:1999",   LanguageStandardKind.C99,     LanguageStandard.C99);
-    public static readonly LanguageStandardAlias C9X          = Create("c9x",            LanguageStandardKind.C99,     LanguageStandard.C99, LanguageStandardAliasKind.AliasDeprecated);
-    public static readonly LanguageStandardAlias ISO9899_199X = Create("iso9899:199x",   LanguageStandardKind.C99,     LanguageStandard.C99, LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias C9X          = Create("c9x",            LanguageStandardKind.C99,     LanguageStandard.C99,   LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias ISO9899_199X = Create("iso9899:199x",   LanguageStandardKind.C99,     LanguageStandard.C99,   LanguageStandardAliasKind.AliasDeprecated);
     public static readonly LanguageStandardAlias GNU99        = Create("gnu99",          LanguageStandardKind.GNU99,   LanguageStandard.GNU99, LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias GNU9X        = Create("gnu9x",          LanguageStandardKind.GNU99,   LanguageStandard.GNU99, LanguageStandardAliasKind.AliasDeprecated);
 
-    public static readonly LanguageStandardAlias C11          = Create("c11",            LanguageStandardKind.C11,     LanguageStandard.C11, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias C11          = Create("c11",            LanguageStandardKind.C11,     LanguageStandard.C11,   LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias ISO9899_2011 = Create("iso9899:2011",   LanguageStandardKind.C11,     LanguageStandard.C11);
-    public static readonly LanguageStandardAlias C1X          = Create("c1x",            LanguageStandardKind.C11,     LanguageStandard.C11, LanguageStandardAliasKind.AliasDeprecated);
-    public static readonly LanguageStandardAlias ISO9899_201X = Create("iso9899:201x",   LanguageStandardKind.C11,     LanguageStandard.C11, LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias C1X          = Create("c1x",            LanguageStandardKind.C11,     LanguageStandard.C11,   LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias ISO9899_201X = Create("iso9899:201x",   LanguageStandardKind.C11,     LanguageStandard.C11,   LanguageStandardAliasKind.AliasDeprecated);
     public static readonly LanguageStandardAlias GNU11        = Create("gnu11",          LanguageStandardKind.GNU11,   LanguageStandard.GNU11, LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias GNU1X        = Create("gnu1x",          LanguageStandardKind.GNU11,   LanguageStandard.GNU11, LanguageStandardAliasKind.AliasDeprecated);
 
-    public static readonly LanguageStandardAlias C17          = Create("c17",            LanguageStandardKind.C17,     LanguageStandard.C17, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias C17          = Create("c17",            LanguageStandardKind.C17,     LanguageStandard.C17,   LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias ISO9899_2017 = Create("iso9899:2017",   LanguageStandardKind.C17,     LanguageStandard.C17);
-    public static readonly LanguageStandardAlias C18          = Create("c18",            LanguageStandardKind.C17,     LanguageStandard.C17, LanguageStandardAliasKind.AliasDeprecated);
-    public static readonly LanguageStandardAlias ISO9899_2018 = Create("iso9899:2018",   LanguageStandardKind.C17,     LanguageStandard.C17, LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias C18          = Create("c18",            LanguageStandardKind.C17,     LanguageStandard.C17,   LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias ISO9899_2018 = Create("iso9899:2018",   LanguageStandardKind.C17,     LanguageStandard.C17,   LanguageStandardAliasKind.AliasDeprecated);
     public static readonly LanguageStandardAlias GNU17        = Create("gnu17",          LanguageStandardKind.GNU17,   LanguageStandard.GNU17, LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias GNU18        = Create("gnu18",          LanguageStandardKind.GNU17,   LanguageStandard.GNU17, LanguageStandardAliasKind.AliasDeprecated);
 
-    public static readonly LanguageStandardAlias C23          = Create("c23",            LanguageStandardKind.C23,     LanguageStandard.C23, LanguageStandardAliasKind.Primary);
-    public static readonly LanguageStandardAlias C2X          = Create("c2x",            LanguageStandardKind.C23,     LanguageStandard.C23, LanguageStandardAliasKind.AliasDeprecated);
+    public static readonly LanguageStandardAlias C23          = Create("c23",            LanguageStandardKind.C23,     LanguageStandard.C23,   LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias C2X          = Create("c2x",            LanguageStandardKind.C23,     LanguageStandard.C23,   LanguageStandardAliasKind.AliasDeprecated);
     public static readonly LanguageStandardAlias GNU23        = Create("gnu23",          LanguageStandardKind.GNU23,   LanguageStandard.GNU23, LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias GNU2X        = Create("gnu2x",          LanguageStandardKind.GNU23,   LanguageStandard.GNU23, LanguageStandardAliasKind.AliasDeprecated);
     
-    public static readonly LanguageStandardAlias C2Y          = Create("c2y",            LanguageStandardKind.C2Y,     LanguageStandard.C2Y, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias C2Y          = Create("c2y",            LanguageStandardKind.C2Y,     LanguageStandard.C2Y,   LanguageStandardAliasKind.Primary);
     public static readonly LanguageStandardAlias GNU2Y        = Create("gnu2y",          LanguageStandardKind.GNU2Y,   LanguageStandard.GNU2Y, LanguageStandardAliasKind.Primary);
 
     #endregion
 
     #region Laye Language Standards
 
-    public static readonly LanguageStandardAlias Laye25       = Create("laye25",         LanguageStandardKind.Laye25,  LanguageStandard.Laye25, LanguageStandardAliasKind.Primary);
-    public static readonly LanguageStandardAlias Laye25E      = Create("laye25e",        LanguageStandardKind.Laye25E, LanguageStandard.Laye25E, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias LayeIndev    = Create("laye-indev",     LanguageStandardKind.Laye25,  LanguageStandard.LayeIndev, LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias Laye25       = Create("laye25",         LanguageStandardKind.Laye25,  LanguageStandard.Laye25,    LanguageStandardAliasKind.Primary);
+    public static readonly LanguageStandardAlias Laye25E      = Create("laye25e",        LanguageStandardKind.Laye25E, LanguageStandard.Laye25E,   LanguageStandardAliasKind.Primary);
 
     #endregion
 
@@ -170,6 +173,7 @@ public sealed class LanguageStandard
             case LanguageStandardKind.GNU23: standard = GNU23; return true;
             case LanguageStandardKind.C2Y: standard = C2Y; return true;
             case LanguageStandardKind.GNU2Y: standard = GNU2Y; return true;
+            case LanguageStandardKind.LayeIndev: standard = LayeIndev; return true;
             case LanguageStandardKind.Laye25: standard = Laye25; return true;
             case LanguageStandardKind.Laye25E: standard = Laye25E; return true;
         }
@@ -203,6 +207,7 @@ public sealed class LanguageStandard
 
     #region Laye Language Standards
 
+    public static readonly LanguageStandard LayeIndev = new("Laye In-Development", SL.Laye, LF.None);
     public static readonly LanguageStandard Laye25 = new("Laye 2025", SL.Laye, LF.Laye25);
     public static readonly LanguageStandard Laye25E = new("Laye 2025 with embedded extensions", SL.Laye, LF.Laye25 | LF.Embedded);
 

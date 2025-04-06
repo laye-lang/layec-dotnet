@@ -1,7 +1,8 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 using LayeC.Diagnostics;
-using LayeC.FrontEnd.C.Preprocess;
+using LayeC.Formatting;
 using LayeC.Source;
 
 namespace LayeC.FrontEnd;
@@ -19,6 +20,7 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Error, "0002", source, location, [], "The parser decided it could not recover after an error.");
         if (note is not null) context.EmitDiagnostic(DiagnosticSemantic.Note, "0002", source, location, [], note);
         context.Diag.Emit(DiagnosticLevel.Fatal, "Terminating the compiler.");
+        throw new UnreachableException();
     }
 
     #endregion
@@ -37,6 +39,29 @@ public static class FrontEndDiagnostics
     public static void ErrorUnrecognizedEscapeSequence(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1004", source, location, [], "Unrecognized escape sequence.");
 
+    public static void ErrorInvalidCTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, string tokenText, string? maybeText = null)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1005", source, location, [], $"'{tokenText}' is not a valid C token.");
+        if (maybeText is not null)
+            context.EmitDiagnostic(DiagnosticSemantic.Note, "1005", source, location, [], $"Did you mean '{maybeText}'?");
+    }
+
+    public static void ErrorInvalidLayeTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, string tokenText, string? maybeText = null)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1006", source, location, [], $"'{tokenText}' is not a valid Laye token.");
+        if (maybeText is not null)
+            context.EmitDiagnostic(DiagnosticSemantic.Note, "1006", source, location, [], $"Did you mean '{maybeText}'?");
+    }
+
+    public static void ErrorTooManyCharactersInCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1007", source, location, [], "Too many characters in character literal.");
+
+    public static void ErrorUnclosedStringOrCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location, string literalKind) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1008", source, location, [], $"Unclosed {literalKind} literal.");
+
+    public static void ErrorBitWidthOutOfRange(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1009", source, location, [], "Type bit width must be in the range [1, 65536).");
+
     #endregion
 
     #region 2XXX - Syntactic Diagnostics
@@ -53,14 +78,14 @@ public static class FrontEndDiagnostics
     public static void ErrorMacroNameMissing(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "2003", source, location, [], "Macro name missing.");
 
-    public static void ErrorUnterminatedFunctionLikeMacro(this CompilerContext context, SourceText source, SourceLocation location, CToken macroDefToken)
+    public static void ErrorUnterminatedFunctionLikeMacro(this CompilerContext context, SourceText source, SourceLocation location, Token macroDefToken)
     {
         context.EmitDiagnostic(DiagnosticSemantic.Error, "2004", source, location, [], "Unterminated function-like macro invocation.");
         context.EmitDiagnostic(DiagnosticSemantic.Note, "2004", source, macroDefToken.Location, [], $"Macro '{macroDefToken.StringValue}' defined here.");
     }
 
     public static void ErrorFunctionSpecifierNotAllowed(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenSpelling) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Note, "2005", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2005", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
 
     #endregion
 

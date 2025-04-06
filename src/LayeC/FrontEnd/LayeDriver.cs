@@ -56,14 +56,21 @@ public sealed class LayeDriver
         var languageOptions = new LanguageOptions();
         languageOptions.SetDefaults(Context, Options.Standards);
 
-        var syntaxPrinter = new SyntaxDebugTreeVisualizer(Options.OutputColoring);
+        var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
 
-        var sema = new Sema(Context, languageOptions);
         foreach (var (fileName, file) in Options.InputFiles)
         {
             var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-            var unitSyntax = Parser.ParseLayeModuleUnitSource(Context, sema, source);
-            syntaxPrinter.PrintUnit(unitSyntax);
+
+            var sourceLanguage = file.Extension is ".c" or ".h" ? SourceLanguage.C : SourceLanguage.Laye;
+            var preprocessor = new Preprocessor(Context, source, languageOptions, sourceLanguage);
+
+            while (preprocessor.ReadToken() is { } token)
+            {
+                debugPrinter.PrintToken(token);
+                if (token.Kind == TokenKind.EndOfFile)
+                    break;
+            }
         }
 
         return 0;

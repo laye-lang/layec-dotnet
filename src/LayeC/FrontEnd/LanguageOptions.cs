@@ -4,9 +4,12 @@ namespace LayeC.FrontEnd;
 
 public sealed class LanguageOptions
 {
-    public static readonly LanguageStandardKinds DefaultLanguageStandards = (LanguageStandardKind.Laye25, LanguageStandardKind.C23);
+    public static readonly LanguageStandardKinds DefaultLanguageStandards = (LanguageStandardKind.LayeIndev, LanguageStandardKind.C23);
 
     public LanguageStandardKinds Standards { get; private set; }
+
+    private LanguageFeatures CLanguageFeatures { get; set; }
+    private LanguageFeatures LayeLanguageFeatures { get; set; }
 
     public bool CHasLineComments { get; private set; }
     public bool CIsC99 { get; private set; }
@@ -53,6 +56,8 @@ public sealed class LanguageOptions
 
         context.Assert(standard.Language == SourceLanguage.C, $"Should be setting the defaults for a C standard, but got a {standard.Language} standard.");
 
+        CLanguageFeatures = standard.Features;
+
         CHasLineComments = standard.Features.HasFlag(LanguageFeatures.CLineComment);
         CIsC99 = standard.Features.HasFlag(LanguageFeatures.C99);
         CIsC11 = standard.Features.HasFlag(LanguageFeatures.C11);
@@ -80,6 +85,38 @@ public sealed class LanguageOptions
 
         context.Assert(standard.Language == SourceLanguage.Laye, $"Should be setting the defaults for a Laye standard, but got a {standard.Language} standard.");
 
+        LayeLanguageFeatures = standard.Features;
+
         LayeHasEmbeddedExtensions = standard.Features.HasFlag(LanguageFeatures.Embedded);
+    }
+
+    public bool TryGetCKeywordKind(StringView identifierText, out TokenKind keywordTokenKind)
+    {
+        if (SyntaxFacts.TryGetCKeywordInfo(identifierText, out var keywordInfo))
+        {
+            if (keywordInfo.Features == (CLanguageFeatures & keywordInfo.Features))
+            {
+                keywordTokenKind = keywordInfo.KeywordKind;
+                return true;
+            }
+        }
+
+        keywordTokenKind = TokenKind.Identifier;
+        return false;
+    }
+
+    public bool TryGetLayeKeywordKind(StringView identifierText, out TokenKind keywordTokenKind)
+    {
+        if (SyntaxFacts.TryGetLayeKeywordInfo(identifierText, out var keywordInfo))
+        {
+            if (keywordInfo.Features == (LayeLanguageFeatures & keywordInfo.Features))
+            {
+                keywordTokenKind = keywordInfo.KeywordKind;
+                return true;
+            }
+        }
+
+        keywordTokenKind = TokenKind.Identifier;
+        return false;
     }
 }

@@ -1,9 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text;
-using System.Text.Json.Serialization;
 
 using LayeC.Formatting;
-using LayeC.Source;
 
 namespace LayeC.Diagnostics;
 
@@ -48,6 +46,7 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
         Writer.Write(groupText);
     }
 
+#pragma warning disable IDE0060 // Remove unused parameter
     private void ResetColor(StringBuilder builder)
     {
         if (!UseColor) return;
@@ -56,10 +55,8 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
     private void WriteColor(StringBuilder builder, MarkupColor color)
     {
         if (!UseColor) return;
-        switch (color)
-        {
-        }
     }
+#pragma warning restore IDE0060 // Remove unused parameter
 
     private string RenderDiagnosticGroup(Diagnostic[] group, int displayWidth)
     {
@@ -148,7 +145,9 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
         return markupRenderer.Render(builder.Markup);
     }
 
+#pragma warning disable CS9113 // Parameter is unread.
     private sealed class FormattedDiagnosticMessageMarkupRenderer(int clientWidth)
+#pragma warning restore CS9113 // Parameter is unread.
     {
         public string Render(Markup markup)
         {

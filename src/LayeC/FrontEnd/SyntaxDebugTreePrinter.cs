@@ -1,13 +1,11 @@
-﻿using LayeC.FrontEnd.Syntax;
+﻿namespace LayeC.FrontEnd;
 
-namespace LayeC.FrontEnd;
-
-public sealed class SyntaxDebugTreeVisualizer(bool useColor)
-    : BaseTreeDebugVisualizer(useColor)
+public sealed class SyntaxDebugTreePrinter(bool useColor)
+    : BaseTreeDebugPrinter(useColor)
 {
-    public void PrintUnit(SyntaxModuleUnit unitSyntax)
+    public void PrintToken(Token token)
     {
-        Print(unitSyntax);
+        Print(token);
         Console.ResetColor();
     }
 
@@ -15,6 +13,11 @@ public sealed class SyntaxDebugTreeVisualizer(bool useColor)
     {
         SetColor(ColorBase);
         Console.Write(node.DebugNodeName);
+
+        SetColor(ColorLocation);
+        Console.Write(" <");
+        Console.Write(node.Location.Offset);
+        Console.Write('>');
 
         switch (node)
         {
@@ -27,6 +30,9 @@ public sealed class SyntaxDebugTreeVisualizer(bool useColor)
 
     private void PrintTokenInfo(Token token)
     {
+        SetColor(ColorMisc);
+        Console.Write(' ');
+        Console.Write(token.Language);
         SetColor(ColorProperty);
         Console.Write(' ');
         Console.Write(token.Kind);
@@ -35,6 +41,12 @@ public sealed class SyntaxDebugTreeVisualizer(bool useColor)
         {
             SetColor(ColorProperty);
             Console.Write(" BOL");
+        }
+
+        if (token.IsAtEndOfLine)
+        {
+            SetColor(ColorProperty);
+            Console.Write(" EOL");
         }
 
         SetColor(ColorMisc);

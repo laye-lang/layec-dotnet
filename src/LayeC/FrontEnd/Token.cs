@@ -8,7 +8,7 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     : IHasSourceInfo
     , ITreeDebugNode
 {
-    public TokenKind Kind { get; } = kind;
+    public TokenKind Kind { get; set; } = kind;
     public SourceLanguage Language { get; } = language;
     public SourceText Source { get; } = source;
     public SourceRange Range { get; } = range;
@@ -16,6 +16,7 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     public StringView Spelling { get; } = source.Slice(range);
 
     public bool IsAtStartOfLine { get; init; } = false;
+    public bool IsAtEndOfLine => TrailingTrivia.Trivia.Any(t => t is TriviumNewLine);
 
     public TriviaList LeadingTrivia { get; init; } = TriviaList.EmptyLeading;
     public TriviaList TrailingTrivia { get; init; } = TriviaList.EmptyTrailing;

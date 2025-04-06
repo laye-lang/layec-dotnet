@@ -1,14 +1,17 @@
 ﻿using System.Text;
 
+using LayeC.Source;
+
 namespace LayeC;
 
 public interface ITreeDebugNode
 {
+    public SourceLocation Location { get; }
     public string DebugNodeName { get; }
     public IEnumerable<ITreeDebugNode> Children { get; }
 }
 
-public abstract class BaseTreeDebugVisualizer(bool useColor)
+public abstract class BaseTreeDebugPrinter(bool useColor)
 {
     protected readonly StringBuilder _leadingText = new(128);
 

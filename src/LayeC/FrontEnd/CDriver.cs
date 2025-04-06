@@ -1,6 +1,5 @@
 ﻿using LayeC.Diagnostics;
 using LayeC.Driver;
-using LayeC.FrontEnd.C.Preprocess;
 using LayeC.Source;
 
 namespace LayeC.FrontEnd;
@@ -57,28 +56,6 @@ public sealed class CDriver
         foreach (var (fileName, file) in Options.InputFiles)
         {
             var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-            var ppTokens = CLexer.ReadTokens(Context, source);
-
-            foreach (var t in ppTokens)
-            {
-                Console.Error.Write($"{t.Kind} <{t.Location.Offset}>{(t.IsAtStartOfLine ? " BOL" : "")} '{source.Substring(t.Range)}'");
-                if (t.StringValue.Length > 0)
-                    Console.Error.Write($" ({t.StringValue})");
-                Console.Error.WriteLine();
-            }
-
-            Console.Error.WriteLine("----");
-
-            var macroStore = new CPPMacroStore();
-            var tokens = CPreprocessor.PreprocessTokens(Context, macroStore, source, ppTokens);
-
-            foreach (var t in tokens)
-            {
-                Console.Error.Write($"{t.Kind} <{t.Location.Offset}> '{source.Substring(t.Range)}'");
-                if (t.StringValue.Length > 0)
-                    Console.Error.Write($" ({t.StringValue})");
-                Console.Error.WriteLine();
-            }
         }
 
         return 0;
