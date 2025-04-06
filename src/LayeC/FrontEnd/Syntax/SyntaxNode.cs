@@ -1,4 +1,5 @@
-﻿using LayeC.Source;
+﻿using LayeC.FrontEnd.Semantics;
+using LayeC.Source;
 
 namespace LayeC.FrontEnd.Syntax;
 
@@ -16,10 +17,12 @@ public abstract class SyntaxNode(SourceText source, SourceRange range)
 
     public virtual bool CanBeType { get; } = false;
 
+    public SemaNode? SourceCNode { get; set; }
+
     string ITreeDebugNode.DebugNodeName => DebugNodeName;
     protected abstract string DebugNodeName { get; }
 
-    IEnumerable<ITreeDebugNode> ITreeDebugNode.Children => Children;
+    IEnumerable<ITreeDebugNode> ITreeDebugNode.Children => SourceCNode is { } sourceCNode ? [.. Children, sourceCNode] : Children;
     protected abstract IEnumerable<ITreeDebugNode> Children { get; }
 
     protected SyntaxNode(Token token)
@@ -31,4 +34,20 @@ public abstract class SyntaxNode(SourceText source, SourceRange range)
         : this(child.Source, child.Range)
     {
     }
+}
+
+public sealed class SyntaxModuleUnit(SourceText source, IReadOnlyList<SyntaxNode> topLevelNodes)
+    : SyntaxNode(source, default)
+{
+    public IReadOnlyList<SyntaxNode> TopLevelNodes { get; } = [.. topLevelNodes];
+    protected override string DebugNodeName { get; } = nameof(SyntaxModuleUnit);
+    protected override IEnumerable<ITreeDebugNode> Children { get; } = [.. topLevelNodes];
+}
+
+public sealed class SyntaxEndOfFile(Token eofToken)
+    : SyntaxNode(eofToken)
+{
+    public Token EndOfFileToken { get; } = eofToken;
+    protected override string DebugNodeName { get; } = nameof(SyntaxEndOfFile);
+    protected override IEnumerable<ITreeDebugNode> Children { get; } = [eofToken];
 }

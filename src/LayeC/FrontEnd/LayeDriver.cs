@@ -53,13 +53,17 @@ public sealed class LayeDriver
 
     public int Execute()
     {
-        var sema = new Sema(Context);
+        var languageOptions = new LanguageOptions();
+        languageOptions.SetDefaults(Context, Options.Standards);
+
+        var syntaxPrinter = new SyntaxDebugTreeVisualizer(Options.OutputColoring);
+
+        var sema = new Sema(Context, languageOptions);
         foreach (var (fileName, file) in Options.InputFiles)
         {
             var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-            var parser = new Parser(Context, sema, source, SourceLanguage.Laye);
-            var node1 = parser.ParseTopLevelSyntax();
-            var node2 = parser.ParseTopLevelSyntax();
+            var unitSyntax = Parser.ParseLayeModuleUnitSource(Context, sema, source);
+            syntaxPrinter.PrintUnit(unitSyntax);
         }
 
         return 0;

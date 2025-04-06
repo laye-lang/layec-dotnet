@@ -1,4 +1,6 @@
-﻿using LayeC.Diagnostics;
+﻿using System.Diagnostics.CodeAnalysis;
+
+using LayeC.Diagnostics;
 using LayeC.FrontEnd.C.Preprocess;
 using LayeC.Source;
 
@@ -7,6 +9,17 @@ namespace LayeC.FrontEnd;
 public static class FrontEndDiagnostics
 {
     #region 0XXX - Miscellaneous Tooling/Internal Diagnostics
+
+    public static void ErrorNotSupported(this CompilerContext context, SourceText source, SourceLocation location, string what) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "0001", source, location, [], $"{what} is currently not supported.");
+
+    [DoesNotReturn]
+    public static void ErrorParseUnrecoverable(this CompilerContext context, SourceText source, SourceLocation location, string? note = null)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "0002", source, location, [], "The parser decided it could not recover after an error.");
+        if (note is not null) context.EmitDiagnostic(DiagnosticSemantic.Note, "0002", source, location, [], note);
+        context.Diag.Emit(DiagnosticLevel.Fatal, "Terminating the compiler.");
+    }
 
     #endregion
 
@@ -45,6 +58,9 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Error, "2004", source, location, [], "Unterminated function-like macro invocation.");
         context.EmitDiagnostic(DiagnosticSemantic.Note, "2004", source, macroDefToken.Location, [], $"Macro '{macroDefToken.StringValue}' defined here.");
     }
+
+    public static void ErrorFunctionSpecifierNotAllowed(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenSpelling) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "2005", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
 
     #endregion
 

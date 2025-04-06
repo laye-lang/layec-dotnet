@@ -23,14 +23,24 @@ public enum LexerState
     CPPHasHeaderNames = 1 << 1,
 }
 
-public sealed class Lexer(CompilerContext context, SourceText source,
-    SourceLanguage language = SourceLanguage.Laye)
+public sealed class Lexer
 {
-    public CompilerContext Context { get; } = context;
-    public SourceText Source { get; } = source;
+    public CompilerContext Context { get; }
+    public SourceText Source { get; }
 
-    public SourceLanguage Language { get; private set; } = language;
+    public LanguageOptions LanguageOptions { get; }
+    
+    public SourceLanguage Language { get; private set; }
     public LexerState State { get; private set; } = LexerState.None;
+
+    internal Lexer(CompilerContext context, SourceText source, LanguageOptions languageOptions,
+        SourceLanguage language = SourceLanguage.Laye)
+    {
+        Context = context;
+        Source = source;
+        LanguageOptions = languageOptions;
+        Language = language;
+    }
 
     #region Source Character Processing
 

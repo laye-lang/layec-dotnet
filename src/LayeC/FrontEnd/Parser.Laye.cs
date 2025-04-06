@@ -23,7 +23,7 @@ public sealed partial class Parser
                 using (var _ = PushLexerMode(SourceLanguage.C))
                 {
                     // just grab one for now
-                    var nestedCNode = ParseCDeclarator();
+                    var nestedCNode = ParseCTopLevel();
                     nestedCNodes.Add(nestedCNode);
                 }
 

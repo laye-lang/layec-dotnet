@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using LayeC.FrontEnd.Syntax;
@@ -7,14 +6,41 @@ using LayeC.Source;
 
 namespace LayeC.FrontEnd;
 
-public sealed partial class Parser(CompilerContext context, Sema sema, SourceText source,
-    SourceLanguage language = SourceLanguage.Laye)
+public sealed partial class Parser
 {
-    public CompilerContext Context { get; } = context;
-    public Sema Sema { get; } = sema;
-    public SourceText Source { get; } = source;
+    public static SyntaxModuleUnit ParseLayeModuleUnitSource(CompilerContext context, Sema sema, SourceText unitSource)
+    {
+        var parser = new Parser(context, sema, unitSource, SourceLanguage.Laye);
+        var topLevelNodes = new List<SyntaxNode>();
 
-    private readonly Lexer _lexer = new(context, source, language);
+        while (true)
+        {
+            var node = parser.ParseTopLevelSyntax();
+            topLevelNodes.Add(node);
+
+            if (node is SyntaxEndOfFile)
+                break;
+        }
+
+        return new SyntaxModuleUnit(unitSource, topLevelNodes);
+    }
+
+    public CompilerContext Context { get; }
+    public Sema Sema { get; }
+    public SourceText Source { get; }
+    public LanguageOptions LanguageOptions { get; }
+
+    private readonly Lexer _lexer;
+
+    private Parser(CompilerContext context, Sema sema, SourceText source,
+        SourceLanguage language = SourceLanguage.Laye)
+    {
+        Context = context;
+        Sema = sema;
+        Source = source;
+        LanguageOptions = sema.LanguageOptions;
+        _lexer = new(context, source, sema.LanguageOptions, language);
+    }
 
     #region Token Processing
 
@@ -116,9 +142,14 @@ public sealed partial class Parser(CompilerContext context, Sema sema, SourceTex
 
     public SyntaxNode ParseTopLevelSyntax()
     {
-        if (At(TokenKind.Pragma))
+        if (TryConsume(TokenKind.EndOfFile, out var eofToken))
+            return new SyntaxEndOfFile(eofToken);
+
+        if (Language == SourceLanguage.C)
+            return ParseCTopLevel();
+
+        if (TryConsume(TokenKind.Pragma, out var pragmaToken))
         {
-            var pragmaToken = Consume();
             var pragmaKindToken = Consume();
             return ParseLayeTopLevelPragma(pragmaToken, pragmaKindToken);
         }

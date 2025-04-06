@@ -71,9 +71,15 @@ public enum TokenKind
     CharacterConstant,
     LiteralString,
 
+    Inline,
     Int,
+    NoReturn,
+    _NoReturn,
     Operator,
     Pragma,
+    StaticAssert,
+    _StaticAssert,
+    Typedef,
 }
 
 public static class TokenKindExtensions

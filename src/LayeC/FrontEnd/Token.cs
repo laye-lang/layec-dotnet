@@ -13,6 +13,7 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     public SourceText Source { get; } = source;
     public SourceRange Range { get; } = range;
     public SourceLocation Location { get; } = range.Begin;
+    public StringView Spelling { get; } = source.Slice(range);
 
     public bool IsAtStartOfLine { get; init; } = false;
 

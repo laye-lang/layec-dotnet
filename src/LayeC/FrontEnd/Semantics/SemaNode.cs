@@ -1,4 +1,5 @@
-﻿using LayeC.Source;
+﻿using LayeC.FrontEnd.Syntax;
+using LayeC.Source;
 
 namespace LayeC.FrontEnd.Semantics;
 
@@ -23,4 +24,14 @@ public abstract class SemaNode(SourceText source, SourceRange range)
 
     IEnumerable<ITreeDebugNode> ITreeDebugNode.Children => Children;
     protected abstract IEnumerable<ITreeDebugNode> Children { get; }
+
+    protected SemaNode(Token token)
+        : this(token.Source, token.Range)
+    {
+    }
+
+    protected SemaNode(SyntaxNode child)
+        : this(child.Source, child.Range)
+    {
+    }
 }
