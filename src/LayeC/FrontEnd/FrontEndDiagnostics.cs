@@ -99,6 +99,9 @@ public static class FrontEndDiagnostics
     public static void ErrorFunctionSpecifierNotAllowed(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenSpelling) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "2005", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
 
+    public static void ErrorMissingEndif(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2006", source, location, [], "Missing '#endif' at end of file.");
+
     #endregion
 
     #region 3XXX - Semantic Diagnostics

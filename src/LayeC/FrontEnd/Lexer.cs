@@ -35,6 +35,8 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     public SourceLanguage Language { get; private set; } = language;
     public LexerState State { get; set; } = LexerState.None;
 
+    public SourceLocation EndOfFileLocation { get; } = new(source.Length);
+
     #region Source Character Processing
 
     private int _readPosition;
@@ -127,6 +129,8 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     #endregion
 
     #region Lexer State Management
+
+    public int PreprocessorIfDepth { get; private set; }
 
     public IDisposable PushMode(SourceLanguage language) => PushMode(language, State);
     public IDisposable PushMode(LexerState state) => PushMode(Language, state);

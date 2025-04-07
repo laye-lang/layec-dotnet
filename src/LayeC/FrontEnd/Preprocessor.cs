@@ -98,10 +98,14 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         {
             case LexerTokenStream lexerStream:
             {
+                if (lexerStream.Lexer.PreprocessorIfDepth > 0)
+                    Context.ErrorMissingEndif(lexerStream.Lexer.Source, lexerStream.Lexer.EndOfFileLocation);
             } break;
 
-            case BufferTokenStream arrayStream:
+            case BufferTokenStream bufferStream:
             {
+                if (bufferStream.SourceMacro is { } macro)
+                    macro.IsExpanding = false;
             } break;
         }
     }
@@ -142,29 +146,43 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private Token ReadTokenRawImpl()
     {
-        if (_peekedRawToken is { } peeked)
-        {
-            _peekedRawToken = null;
-            return peeked;
-        }
+        var ppToken = ImplButForReal();
+        return ppToken;
 
-        while (_tokenStreams.Count > 0 && _tokenStreams.Peek().IsAtEnd)
+        Token ImplButForReal()
         {
-            var ts = _tokenStreams.Peek();
-            if (ts is BufferTokenStream arrayStream && arrayStream.KeepWhenEmpty)
+            if (_peekedRawToken is { } peeked)
+            {
+                _peekedRawToken = null;
+                return peeked;
+            }
+
+            while (_tokenStreams.Count > 0 && _tokenStreams.Peek().IsAtEnd)
+            {
+                var ts = _tokenStreams.Peek();
+                if (ts is BufferTokenStream arrayStream && arrayStream.KeepWhenEmpty)
+                    return Token.AnyEndOfFile;
+
+                PopTokenStream();
+            }
+
+            if (_tokenStreams.Count == 0)
                 return Token.AnyEndOfFile;
 
-            _tokenStreams.Pop();
+            var ppToken = _tokenStreams.Peek().Read();
+            if (ppToken.Kind == TokenKind.EndOfFile)
+            {
+                if (_tokenStreams.Count == 1)
+                {
+                    PopTokenStream();
+                    return ppToken;
+                }
+
+                return ReadTokenRawImpl();
+            }
+
+            return ppToken;
         }
-
-        if (_tokenStreams.Count == 0)
-            return Token.AnyEndOfFile;
-
-        var ppToken = _tokenStreams.Peek().Read();
-        if (ppToken.Kind == TokenKind.EndOfFile)
-            return ReadTokenRawImpl();
-
-        return ppToken;
     }
 
     private Token Preprocess(Token ppToken)
@@ -172,10 +190,13 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (ppToken.Language == SourceLanguage.C && ppToken is { Kind: TokenKind.Hash, IsAtStartOfLine: true } && IsLexingFile)
         {
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
-            using var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective);
+            using (var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
+            {
+                var directiveToken = ReadTokenRaw();
+                DispatchDirectiveParser(SourceLanguage.C, directiveToken);
+            }
 
-            var directiveToken = ReadTokenRaw();
-            return DispatchDirectiveParser(SourceLanguage.C, directiveToken);
+            return Preprocess(ReadTokenRaw());
         }
 
         if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma or TokenKind.Hash, IsAtStartOfLine: true } && IsLexingFile)
@@ -184,16 +205,19 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 Context.ErrorCStylePreprocessingDirective(ppToken.Source, ppToken.Location);
 
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
-            using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
-
-            var directiveToken = ReadTokenRaw();
-            if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
+            using (var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
             {
-                Context.Todo("`pragma \"C\"` in Laye source files.");
-                throw new UnreachableException();
+                var directiveToken = ReadTokenRaw();
+                if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
+                {
+                    Context.Todo("`pragma \"C\"` in Laye source files.");
+                    throw new UnreachableException();
+                }
+
+                DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
             }
 
-            return DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+            return Preprocess(ReadTokenRaw());
         }
 
         if (ppToken.Kind == TokenKind.CPPIdentifier && MaybeExpandMacro(ppToken))
@@ -203,7 +227,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         return ppToken;
 
-        Token DispatchDirectiveParser(SourceLanguage language, Token directiveToken)
+        void DispatchDirectiveParser(SourceLanguage language, Token directiveToken)
         {
             Context.Assert(IsLexingFile, "Can only handle C preprocessor directives when lexing a source file.");
             Context.Assert(Language == SourceLanguage.C, "Can only handle C preprocessor directives if the lexer was switched to the C language mode.");
@@ -217,8 +241,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 SkipRemainingDirectiveTokens();
             }
             else HandleDirective(language, directiveToken);
-
-            return Preprocess(ReadTokenRaw());
         }
     }
 
