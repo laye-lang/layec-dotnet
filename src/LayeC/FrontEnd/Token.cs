@@ -8,6 +8,8 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     : IHasSourceInfo
     , ITreeDebugNode
 {
+    public static readonly Token AnyEndOfFile = new(TokenKind.EndOfFile, SourceLanguage.None, SourceText.Unknown, default);
+
     public TokenKind Kind { get; set; } = kind;
     public SourceLanguage Language { get; } = language;
     public SourceText Source { get; } = source;
@@ -24,6 +26,8 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     public StringView StringValue { get; init; }
     public BigInteger IntegerValue { get; init; }
     public double FloatValue { get; init; }
+
+    public bool DisableExpansion { get; set; }
 
     public bool IsCPPMacroParam { get; set; }
     public int CPPMacroParamIndex { get; set; }

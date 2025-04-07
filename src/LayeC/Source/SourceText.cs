@@ -3,6 +3,8 @@
 public sealed class SourceText(string name, string text)
     : IEquatable<SourceText>
 {
+    public static readonly SourceText Unknown = new("<???>", "");
+
     private static int _counter = 0;
 
     public readonly int Id = Interlocked.Increment(ref _counter);

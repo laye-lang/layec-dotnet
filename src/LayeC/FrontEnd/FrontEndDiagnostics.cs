@@ -11,7 +11,7 @@ public static class FrontEndDiagnostics
 {
     #region 0XXX - Miscellaneous Tooling/Internal Diagnostics
 
-    public static void ErrorNotSupported(this CompilerContext context, SourceText source, SourceLocation location, string what) =>
+    public static void ErrorNotSupported(this CompilerContext context, SourceText source, SourceLocation location, StringView what) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "0001", source, location, [], $"{what} is currently not supported.");
 
     [DoesNotReturn]
@@ -33,20 +33,20 @@ public static class FrontEndDiagnostics
     public static void ErrorUnclosedComment(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1002", source, location, [], "Unclosed comment.");
 
-    public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, SourceText source, SourceLocation location, string directiveKind) =>
+    public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, SourceText source, SourceLocation location, StringView directiveKind) =>
         context.EmitDiagnostic(DiagnosticSemantic.Warning, "1003", source, location, [], "Extra tokens at end of #endif directive.");
 
     public static void ErrorUnrecognizedEscapeSequence(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1004", source, location, [], "Unrecognized escape sequence.");
 
-    public static void ErrorInvalidCTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, string tokenText, string? maybeText = null)
+    public static void ErrorInvalidCTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenText, string? maybeText = null)
     {
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1005", source, location, [], $"'{tokenText}' is not a valid C token.");
         if (maybeText is not null)
             context.EmitDiagnostic(DiagnosticSemantic.Note, "1005", source, location, [], $"Did you mean '{maybeText}'?");
     }
 
-    public static void ErrorInvalidLayeTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, string tokenText, string? maybeText = null)
+    public static void ErrorInvalidLayeTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenText, string? maybeText = null)
     {
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1006", source, location, [], $"'{tokenText}' is not a valid Laye token.");
         if (maybeText is not null)
@@ -56,17 +56,29 @@ public static class FrontEndDiagnostics
     public static void ErrorTooManyCharactersInCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1007", source, location, [], "Too many characters in character literal.");
 
-    public static void ErrorUnclosedStringOrCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location, string literalKind) =>
+    public static void ErrorUnclosedStringOrCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location, StringView literalKind) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1008", source, location, [], $"Unclosed {literalKind} literal.");
 
     public static void ErrorBitWidthOutOfRange(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1009", source, location, [], "Type bit width must be in the range [1, 65536).");
 
+    public static void ErrorCStylePreprocessingDirective(this CompilerContext context, SourceText source, SourceLocation location)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1010", source, location, [], "C-style preprocessing directives are not allowed in Laye.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "1010", source, location, [], "Use `pragma` for a limited subset of C preprocessor directives.");
+    }
+
+    public static void ErrorExpectedPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1011", source, location, [], "Expected a preprocessor directive.");
+
+    public static void ErrorUnknownPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1012", source, location, [], "Unknown or unsupported preprocessor directive.");
+
     #endregion
 
     #region 2XXX - Syntactic Diagnostics
 
-    public static void ErrorExpectedToken(this CompilerContext context, SourceText source, SourceLocation location, string tokenKindString) =>
+    public static void ErrorExpectedToken(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenKindString) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "2001", source, location, [], $"Expected {tokenKindString}.");
 
     public static void ErrorExpectedMatchingCloseDelimiter(this CompilerContext context, SourceText source, char openDelimiter, char closeDelimiter, SourceLocation closeLocation, SourceLocation openLocation)

@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel.Design;
+using System.Diagnostics;
 using System.Numerics;
 using System.Text;
 
@@ -32,7 +33,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     public LanguageOptions LanguageOptions { get; } = languageOptions;
 
     public SourceLanguage Language { get; private set; } = language;
-    private LexerState State { get; set; } = LexerState.None;
+    public LexerState State { get; set; } = LexerState.None;
 
     #region Source Character Processing
 
@@ -402,8 +403,9 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
             case >= '0' and <= '9':
             {
-                Context.Assert(Language == SourceLanguage.Laye, "Should only be lexing Laye numbers here.");
-                Context.Todo("Laye Numbers");
+                tokenKind = TokenKind.LiteralInteger;
+                while (CurrentCharacter is >= '0' and <= '9')
+                    Advance();
             } break;
 
             case '#':
@@ -441,7 +443,15 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 else tokenKind = TokenKind.Dot;
             } break;
 
-            case ':': tokenKind = TryAdvance(':') ? TokenKind.ColonColon : TokenKind.Colon; break;
+            case ':':
+            {
+                if (TryAdvance(':'))
+                    tokenKind = TokenKind.ColonColon;
+                else if (Language == SourceLanguage.C && LanguageOptions.CHasDigraphs && TryAdvance('>'))
+                    tokenKind = TokenKind.CloseSquare;
+                else tokenKind = TokenKind.Colon;
+            } break;
+
             case '=':
             {
                 if (TryAdvance('='))
@@ -472,6 +482,10 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                         tokenKind = TokenKind.LessLessEqual;
                     else tokenKind = TokenKind.LessLess;
                 }
+                else if (Language == SourceLanguage.C && LanguageOptions.CHasDigraphs && TryAdvance(':'))
+                    tokenKind = TokenKind.OpenSquare;
+                else if (Language == SourceLanguage.C && LanguageOptions.CHasDigraphs && TryAdvance('%'))
+                    tokenKind = TokenKind.OpenCurly;
                 else tokenKind = TokenKind.Less;
             } break;
 
@@ -516,7 +530,25 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
             case '*': tokenKind = TryAdvance('=') ? TokenKind.StarEqual : TokenKind.Star; break;
             case '/': tokenKind = TryAdvance('=') ? TokenKind.SlashEqual : TokenKind.Slash; break;
-            case '%': tokenKind = TryAdvance('=') ? TokenKind.PercentEqual : TokenKind.Percent; break;
+
+            case '%':
+            {
+                if (TryAdvance('='))
+                    tokenKind = TokenKind.PercentEqual;
+                else if (Language == SourceLanguage.C && LanguageOptions.CHasDigraphs && TryAdvance('>'))
+                    tokenKind = TokenKind.CloseCurly;
+                else if (Language == SourceLanguage.C && LanguageOptions.CHasDigraphs && TryAdvance(':'))
+                {
+                    if (CurrentCharacter == '%' && PeekCharacter(1) == ':')
+                    {
+                        Advance(2);
+                        tokenKind = TokenKind.HashHash;
+                    }
+                    else tokenKind = TokenKind.Hash;
+                }
+                else tokenKind = TokenKind.Percent;
+            } break;
+
             case '^': tokenKind = TryAdvance('=') ? TokenKind.CaretEqual : TokenKind.Caret; break;
             case '~': tokenKind = Language == SourceLanguage.Laye && TryAdvance('=') ? TokenKind.TildeEqual : TokenKind.Tilde; break;
 
