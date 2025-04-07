@@ -4,31 +4,89 @@ using LayeC.Source;
 
 namespace LayeC.FrontEnd;
 
-public sealed class Preprocessor
+public sealed class PreprocessorMacroDefinition(StringView name, IEnumerable<Token> tokens, IEnumerable<StringView> parameterNames)
 {
-    private readonly Stack<ITokenStream> _tokenStreams = [];
-    private readonly Queue<Token> _lookAheadTokens = [];
+    public StringView Name { get; } = name;
+    public IReadOnlyList<Token> Tokens { get; } = [.. tokens];
+    public IReadOnlyList<StringView> ParameterNames { get; } = [.. parameterNames];
 
-    private CompilerContext Context { get; }
-    private SourceText Source { get; }
+    public bool IsVariadic { get; init; }
+    public bool IsFunctionLike { get; init; }
 
-    private LanguageOptions LanguageOptions { get; }
-    private SourceLanguage Language => _tokenStreams.Peek().Language;
+    public bool RequiresPasting { get; } = tokens.Any(t => t.Kind == TokenKind.HashHash);
 
-    private bool IsLexingFile => _tokenStreams.TryPeek(out var ts) && ts is LexerBackedTokenStream;
+    public bool IsExpanding { get; set; } = false;
+}
 
-    public Preprocessor(Lexer lexer)
+public sealed class Preprocessor(CompilerContext context, LanguageOptions languageOptions)
+{
+    private CompilerContext Context { get; } = context;
+    private LanguageOptions LanguageOptions { get; } = languageOptions;
+
+    public Token[] PreprocessSource(SourceText source, SourceLanguage language)
     {
-        _tokenStreams.Push(new LexerBackedTokenStream(lexer));
+        AddLexerForSourceText(source, language);
 
-        Context = lexer.Context;
-        Source = lexer.Source;
-        LanguageOptions = lexer.LanguageOptions;
+        var tokens = new List<Token>();
+        while (_tokenStreams.Count > 0)
+        {
+            var token = ReadToken();
+            tokens.Add(token);
+
+            if (token.Kind == TokenKind.EndOfFile)
+            {
+                Context.Assert(_tokenStreams.Count == 0, "Should have only returned the final EOF token if all token streams are empty.");
+                break;
+            }
+        }
+
+        return [.. tokens];
     }
 
-    public Preprocessor(CompilerContext context, SourceText source, LanguageOptions languageOptions, SourceLanguage language = SourceLanguage.Laye)
-        : this(new Lexer(context, source, languageOptions, language))
+    #region Implementation
+
+    private readonly Stack<ITokenStream> _tokenStreams = [];
+    private Token? _peekedRawToken;
+
+    private readonly Dictionary<StringView, PreprocessorMacroDefinition> _macroDefs = [];
+
+    private bool IsLexingFile => _peekedRawToken is null && _tokenStreams.TryPeek(out var ts) && ts is LexerTokenStream;
+
+    private SourceText Source
     {
+        get
+        {
+            if (_peekedRawToken is { } p)
+                return p.Source;
+            return _tokenStreams.TryPeek(out var ts) ? ts.Source : SourceText.Unknown;
+        }
+    }
+
+    private SourceLanguage Language
+    {
+        get
+        {
+            if (_peekedRawToken is { } p)
+                return p.Language;
+            return _tokenStreams.TryPeek(out var ts) ? ts.Language : SourceLanguage.None;
+        }
+    }
+
+    private Token NextRawPPToken
+    {
+        get
+        {
+            if (_peekedRawToken is { } peeked)
+                return peeked;
+
+            return _peekedRawToken = ReadTokenRawImpl();
+        }
+    }
+
+    private void AddLexerForSourceText(SourceText source, SourceLanguage language)
+    {
+        MaterializedPeekedToken();
+        _tokenStreams.Push(new LexerTokenStream(new(Context, source, LanguageOptions, language)));
     }
 
     private void PopTokenStream()
@@ -38,31 +96,42 @@ public sealed class Preprocessor
 
         switch (tokenStream)
         {
-            case LexerBackedTokenStream lexerStream:
+            case LexerTokenStream lexerStream:
             {
             } break;
 
-            case ArrayBackedTokenStream arrayStream:
+            case BufferTokenStream arrayStream:
             {
             } break;
         }
     }
 
-    public Token ReadToken()
+    private void MaterializedPeekedToken()
+    {
+        var peeked = _peekedRawToken;
+        _peekedRawToken = null;
+
+        if (peeked is null or { Kind: TokenKind.EndOfFile })
+            return;
+
+        _tokenStreams.Push(new BufferTokenStream([peeked]));
+    }
+
+    private Token ReadToken()
     {
         var ppToken = ReadAndExpandToken();
         return ConvertPPToken(ppToken);
     }
 
-    public Token ReadAndExpandToken()
+    private Token ReadAndExpandToken()
     {
         var ppToken = ReadTokenRaw();
         return Preprocess(ppToken);
     }
 
-    public Token ReadTokenRaw()
+    private Token ReadTokenRaw()
     {
-        var ppToken = ReadTokenRawImpl(true);
+        var ppToken = ReadTokenRawImpl();
         if (ppToken.Kind == TokenKind.CPPIdentifier)
         {
             // TODO(local): see if we should explicitly block macro expansion for this token
@@ -71,15 +140,18 @@ public sealed class Preprocessor
         return ppToken;
     }
 
-    private Token ReadTokenRawImpl(bool includeLookAhead)
+    private Token ReadTokenRawImpl()
     {
-        if (includeLookAhead && _lookAheadTokens.Count > 0)
-            return _lookAheadTokens.Dequeue();
+        if (_peekedRawToken is { } peeked)
+        {
+            _peekedRawToken = null;
+            return peeked;
+        }
 
         while (_tokenStreams.Count > 0 && _tokenStreams.Peek().IsAtEnd)
         {
             var ts = _tokenStreams.Peek();
-            if (ts is ArrayBackedTokenStream arrayStream && arrayStream.KeepWhenEmpty)
+            if (ts is BufferTokenStream arrayStream && arrayStream.KeepWhenEmpty)
                 return Token.AnyEndOfFile;
 
             _tokenStreams.Pop();
@@ -90,16 +162,16 @@ public sealed class Preprocessor
 
         var ppToken = _tokenStreams.Peek().Read();
         if (ppToken.Kind == TokenKind.EndOfFile)
-            return ReadTokenRawImpl(includeLookAhead);
+            return ReadTokenRawImpl();
 
         return ppToken;
     }
 
-    public Token Preprocess(Token ppToken)
+    private Token Preprocess(Token ppToken)
     {
         if (ppToken.Language == SourceLanguage.C && ppToken is { Kind: TokenKind.Hash, IsAtStartOfLine: true } && IsLexingFile)
         {
-            var lexer = ((LexerBackedTokenStream)_tokenStreams.Peek()).Lexer;
+            var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
             using var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective);
 
             var directiveToken = ReadTokenRaw();
@@ -111,7 +183,7 @@ public sealed class Preprocessor
             if (ppToken.Kind == TokenKind.Hash)
                 Context.ErrorCStylePreprocessingDirective(ppToken.Source, ppToken.Location);
 
-            var lexer = ((LexerBackedTokenStream)_tokenStreams.Peek()).Lexer;
+            var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
             using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
 
             var directiveToken = ReadTokenRaw();
@@ -136,7 +208,7 @@ public sealed class Preprocessor
             Context.Assert(IsLexingFile, "Can only handle C preprocessor directives when lexing a source file.");
             Context.Assert(Language == SourceLanguage.C, "Can only handle C preprocessor directives if the lexer was switched to the C language mode.");
 
-            var lexer = ((LexerBackedTokenStream)_tokenStreams.Peek()).Lexer;
+            var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
             Context.Assert(0 != (lexer.State & LexerState.CPPWithinDirective), "Can only handle C preprocessor directives if the lexer state has been switched to include CPPWithinDirective.");
 
             if (directiveToken.Kind != TokenKind.CPPIdentifier)
@@ -210,4 +282,6 @@ public sealed class Preprocessor
         if (SkipRemainingDirectiveTokens())
             Context.WarningExtraTokensAtEndOfDirective(directiveToken.Source, directiveToken.Location, directiveToken.StringValue);
     }
+
+    #endregion
 }

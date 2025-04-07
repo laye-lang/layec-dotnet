@@ -60,16 +60,15 @@ public sealed class LayeDriver
 
         foreach (var (fileName, file) in Options.InputFiles)
         {
+            var preprocessor = new Preprocessor(Context, languageOptions);
+
             var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-
             var sourceLanguage = file.Extension is ".c" or ".h" ? SourceLanguage.C : SourceLanguage.Laye;
-            var preprocessor = new Preprocessor(Context, source, languageOptions, sourceLanguage);
 
-            while (preprocessor.ReadToken() is { } token)
+            var tokens = preprocessor.PreprocessSource(source, sourceLanguage);
+            foreach (var token in tokens)
             {
                 debugPrinter.PrintToken(token);
-                if (token.Kind == TokenKind.EndOfFile)
-                    break;
             }
         }
 

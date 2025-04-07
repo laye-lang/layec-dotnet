@@ -12,7 +12,7 @@ public interface ITokenStream
     public Token Read();
 }
 
-public sealed class LexerBackedTokenStream(Lexer lexer)
+public sealed class LexerTokenStream(Lexer lexer)
     : ITokenStream
 {
     public Lexer Lexer { get; } = lexer;
@@ -31,9 +31,11 @@ public sealed class LexerBackedTokenStream(Lexer lexer)
     }
 }
 
-public sealed class ArrayBackedTokenStream(IEnumerable<Token> tokens)
+public sealed class BufferTokenStream(IEnumerable<Token> tokens, PreprocessorMacroDefinition? sourceMacro = null)
     : ITokenStream
 {
+    public PreprocessorMacroDefinition? SourceMacro { get; } = sourceMacro;
+
     private readonly Token[] _tokens = [.. tokens];
     private int _position = 0;
 
