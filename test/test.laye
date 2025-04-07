@@ -1,2 +1,2 @@
-pragma define
-int foo();
+pragma define FOO 1 + 2
+int foo() => FOO;

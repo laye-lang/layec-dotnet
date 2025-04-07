@@ -25,19 +25,99 @@ public static class FrontEndDiagnostics
 
     #endregion
 
-    #region 1XXX - Lexical Diagnostics
+    #region 1XXX - Extension Diagnostics
+
+    public static void ExtVAOpt(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], "'__VA_OPT__' is a C23 or GNU extension.");
+
+    #endregion
+
+    #region 2XXX - Lexical Diagnostics
 
     public static void ErrorUnexpectedCharacter(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], "Unexpected character.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2001", source, location, [], "Unexpected character.");
 
     public static void ErrorUnclosedComment(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1002", source, location, [], "Unclosed comment.");
-
-    public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, SourceText source, SourceLocation location, StringView directiveKind) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1003", source, location, [], $"Extra tokens at end of '{directiveKind}' directive.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2002", source, location, [], "Unclosed comment.");
 
     public static void ErrorUnrecognizedEscapeSequence(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1004", source, location, [], "Unrecognized escape sequence.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2003", source, location, [], "Unrecognized escape sequence.");
+
+    public static void ErrorTooManyCharactersInCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2004", source, location, [], "Too many characters in character literal.");
+
+    public static void ErrorUnclosedStringOrCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location, StringView literalKind) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2005", source, location, [], $"Unclosed {literalKind} literal.");
+
+    public static void ErrorBitWidthOutOfRange(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "2006", source, location, [], "Type bit width must be in the range [1, 65536).");
+
+    #endregion
+
+    #region 3XXX - Preprocessing Diagnostics
+
+    public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, SourceText source, SourceLocation location, StringView directiveKind) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Warning, "3001", source, location, [], $"Extra tokens at end of '{directiveKind}' directive.");
+
+    public static void ErrorCStylePreprocessingDirective(this CompilerContext context, SourceText source, SourceLocation location)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3002", source, location, [], "C-style preprocessing directives are not allowed in Laye.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "3002", source, location, [], "Use `pragma` for a limited subset of C preprocessor directives.");
+    }
+
+    public static void ErrorExpectedPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3003", source, location, [], "Expected a preprocessor directive.");
+
+    public static void ErrorUnknownPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3004", source, location, [], "Unknown or unsupported preprocessor directive.");
+
+    public static void ErrorExpectedMacroName(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3005", source, location, [], "Expected a macro name.");
+
+    public static void ErrorDuplicateMacroParameter(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3006", source, location, [], "Duplicate macro parameter name.");
+
+    public static void ErrorMacroNameMissing(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3007", source, location, [], "Macro name missing.");
+
+    public static void ErrorUnterminatedFunctionLikeMacro(this CompilerContext context, SourceText source, SourceLocation location, Token macroDefToken)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3008", source, location, [], "Unterminated function-like macro invocation.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "3008", source, macroDefToken.Location, [], $"Macro '{macroDefToken.StringValue}' defined here.");
+    }
+
+    public static void ErrorMissingEndif(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3009", source, location, [], "Missing '#endif' at end of file.");
+
+    public static void ErrorVariadicTokenInNonVariadicMacro(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3010", token.Source, token.Location, [], $"'{token.Spelling}' can only be used within a variadic macro.");
+
+    public static void ErrorAdjacentConcatenationTokens(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3011", token.Source, token.Location, [], $"'##' cannot be followed by another '##'.");
+
+    #endregion
+
+    #region 4XXX - Syntactic Diagnostics
+
+    public static void ErrorExpectedToken(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenKindString) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4001", source, location, [], $"Expected {tokenKindString}.");
+
+    public static void ErrorExpectedMatchingCloseDelimiter(this CompilerContext context, SourceText source, char openDelimiter, char closeDelimiter, SourceLocation closeLocation, SourceLocation openLocation)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4002", source, closeLocation, [], $"Expected a closing delimiter '{closeDelimiter}'...");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "4002", source, openLocation, [], $"... to match the opening '{openDelimiter}'.");
+    }
+
+    public static void ErrorFunctionSpecifierNotAllowed(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenSpelling) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4003", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
+
+    #endregion
+
+    #region 5XXX - Semantic Diagnostics
+
+    #endregion
+
+#if false
 
     public static void ErrorInvalidCTokenDidYouMean(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenText, string? maybeText = null)
     {
@@ -53,64 +133,5 @@ public static class FrontEndDiagnostics
             context.EmitDiagnostic(DiagnosticSemantic.Note, "1006", source, location, [], $"Did you mean '{maybeText}'?");
     }
 
-    public static void ErrorTooManyCharactersInCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1007", source, location, [], "Too many characters in character literal.");
-
-    public static void ErrorUnclosedStringOrCharacterLiteral(this CompilerContext context, SourceText source, SourceLocation location, StringView literalKind) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1008", source, location, [], $"Unclosed {literalKind} literal.");
-
-    public static void ErrorBitWidthOutOfRange(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1009", source, location, [], "Type bit width must be in the range [1, 65536).");
-
-    public static void ErrorCStylePreprocessingDirective(this CompilerContext context, SourceText source, SourceLocation location)
-    {
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1010", source, location, [], "C-style preprocessing directives are not allowed in Laye.");
-        context.EmitDiagnostic(DiagnosticSemantic.Note, "1010", source, location, [], "Use `pragma` for a limited subset of C preprocessor directives.");
-    }
-
-    public static void ErrorExpectedPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1011", source, location, [], "Expected a preprocessor directive.");
-
-    public static void ErrorUnknownPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1012", source, location, [], "Unknown or unsupported preprocessor directive.");
-
-    public static void ErrorExpectedMacroName(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1013", source, location, [], "Expected a macro name.");
-
-    public static void ErrorDuplicateMacroParameter(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1014", source, location, [], "Duplicate macro parameter name.");
-
-    #endregion
-
-    #region 2XXX - Syntactic Diagnostics
-
-    public static void ErrorExpectedToken(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenKindString) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "2001", source, location, [], $"Expected {tokenKindString}.");
-
-    public static void ErrorExpectedMatchingCloseDelimiter(this CompilerContext context, SourceText source, char openDelimiter, char closeDelimiter, SourceLocation closeLocation, SourceLocation openLocation)
-    {
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "2002", source, closeLocation, [], $"Expected a closing delimiter '{closeDelimiter}'...");
-        context.EmitDiagnostic(DiagnosticSemantic.Note, "2002", source, openLocation, [], $"... to match the opening '{openDelimiter}'.");
-    }
-
-    public static void ErrorMacroNameMissing(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "2003", source, location, [], "Macro name missing.");
-
-    public static void ErrorUnterminatedFunctionLikeMacro(this CompilerContext context, SourceText source, SourceLocation location, Token macroDefToken)
-    {
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "2004", source, location, [], "Unterminated function-like macro invocation.");
-        context.EmitDiagnostic(DiagnosticSemantic.Note, "2004", source, macroDefToken.Location, [], $"Macro '{macroDefToken.StringValue}' defined here.");
-    }
-
-    public static void ErrorFunctionSpecifierNotAllowed(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenSpelling) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "2005", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
-
-    public static void ErrorMissingEndif(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "2006", source, location, [], "Missing '#endif' at end of file.");
-
-    #endregion
-
-    #region 3XXX - Semantic Diagnostics
-
-    #endregion
+#endif
 }

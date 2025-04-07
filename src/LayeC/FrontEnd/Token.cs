@@ -15,15 +15,26 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     public SourceText Source { get; } = source;
     public SourceRange Range { get; } = range;
     public SourceLocation Location { get; } = range.Begin;
-    public StringView Spelling => Source.Slice(Range);
 
-    public bool IsAtStartOfLine { get; init; } = false;
+    private StringView? _overrideSpelling;
+    public StringView Spelling
+    {
+        get => _overrideSpelling ?? Source.Slice(Range);
+        set => _overrideSpelling = value;
+    }
+
+    public bool IsAtStartOfLine { get; set; } = false;
     public bool IsAtEndOfLine => TrailingTrivia.Trivia.Any(t => t is TriviumNewLine or TriviumLineComment);
 
     public TriviaList LeadingTrivia { get; init; } = TriviaList.EmptyLeading;
     public TriviaList TrailingTrivia { get; init; } = TriviaList.EmptyTrailing;
 
-    public bool HasWhiteSpaceBefore => LeadingTrivia.Trivia.Count != 0;
+    private bool? _overrideWhitespaceBeforeState;
+    public bool HasWhiteSpaceBefore
+    {
+        get => _overrideWhitespaceBeforeState ?? LeadingTrivia.Trivia.Count != 0;
+        set => _overrideWhitespaceBeforeState = value;
+    }
 
     public StringView StringValue { get; init; }
     public BigInteger IntegerValue { get; init; }

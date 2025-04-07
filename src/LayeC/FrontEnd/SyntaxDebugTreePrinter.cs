@@ -51,6 +51,6 @@ public sealed class SyntaxDebugTreePrinter(bool useColor)
 
         SetColor(ColorMisc);
         Console.Write(' ');
-        Console.Write(token.Source.Substring(token.Range));
+        Console.Write(token.Spelling);
     }
 }
