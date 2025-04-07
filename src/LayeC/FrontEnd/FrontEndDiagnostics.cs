@@ -34,7 +34,7 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1002", source, location, [], "Unclosed comment.");
 
     public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, SourceText source, SourceLocation location, StringView directiveKind) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1003", source, location, [], "Extra tokens at end of #endif directive.");
+        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1003", source, location, [], $"Extra tokens at end of '{directiveKind}' directive.");
 
     public static void ErrorUnrecognizedEscapeSequence(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1004", source, location, [], "Unrecognized escape sequence.");
@@ -73,6 +73,12 @@ public static class FrontEndDiagnostics
 
     public static void ErrorUnknownPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1012", source, location, [], "Unknown or unsupported preprocessor directive.");
+
+    public static void ErrorExpectedMacroName(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1013", source, location, [], "Expected a macro name.");
+
+    public static void ErrorDuplicateMacroParameter(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1014", source, location, [], "Duplicate macro parameter name.");
 
     #endregion
 

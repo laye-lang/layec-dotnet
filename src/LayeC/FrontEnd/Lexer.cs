@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.Design;
-using System.Diagnostics;
-using System.Numerics;
+﻿using System.Numerics;
 using System.Text;
 
 using LayeC.Source;

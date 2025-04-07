@@ -246,10 +246,59 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private bool MaybeExpandMacro(Token ppToken)
     {
+        Context.Assert(ppToken.Kind == TokenKind.CPPIdentifier, "Can only attempt to expand C preprocessor identifiers.");
+
         if (ppToken.DisableExpansion)
             return false;
 
-        return false;
+        var macroDef = GetExpandableMacroAndArguments(ppToken.StringValue, out var arguments);
+        if (macroDef is null || macroDef.IsExpanding)
+            return false;
+
+        if (macroDef.IsFunctionLike)
+        {
+            Context.Todo("Function-like macro expansion.");
+        }
+        else
+        {
+            if (macroDef.Tokens.Count == 0)
+                return true;
+
+            if (macroDef.RequiresPasting)
+            {
+                Context.Todo("Pasting...");
+            }
+
+            Context.Todo("Object-like macro expansion.");
+        }
+
+        return true;
+
+        PreprocessorMacroDefinition? GetExpandableMacro(StringView name)
+        {
+            if (_macroDefs.TryGetValue(name, out var def) && !def.IsExpanding)
+                return def;
+            else return null;
+        }
+
+        PreprocessorMacroDefinition? GetExpandableMacroAndArguments(StringView name, out Token[][] args)
+        {
+#pragma warning disable IDE0301 // Simplify collection initialization
+            args = Array.Empty<Token[]>();
+#pragma warning restore IDE0301 // Simplify collection initialization
+
+            var macroDef = GetExpandableMacro(name);
+            if (macroDef is null or { IsFunctionLike: false })
+                return macroDef;
+
+            if (NextRawPPToken.Kind != TokenKind.OpenParen)
+                return null;
+
+            var openParen = ReadTokenRaw();
+            Context.Assert(openParen.Kind == TokenKind.OpenParen, openParen.Source, openParen.Location, "How is this not an open paren?");
+
+            return macroDef;
+        }
     }
 
     private Token ConvertPPToken(Token ppToken)
@@ -301,8 +350,83 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void HandleDefineDirective(Token directiveToken)
     {
-        if (SkipRemainingDirectiveTokens())
-            Context.WarningExtraTokensAtEndOfDirective(directiveToken.Source, directiveToken.Location, directiveToken.StringValue);
+        var macroNameToken = ReadTokenRaw();
+        if (macroNameToken.Kind != TokenKind.CPPIdentifier)
+        {
+            Context.ErrorExpectedMacroName(macroNameToken.Source, macroNameToken.Location);
+            SkipRemainingDirectiveTokens();
+            return;
+        }
+
+        var macroName = macroNameToken.StringValue;
+        bool isVariadic = false;
+
+        var token = ReadTokenRaw();
+        bool isFunctionLike = token is { Kind: TokenKind.OpenParen, HasWhiteSpaceBefore: false };
+
+        var parameterNames = new List<StringView>();
+        if (isFunctionLike)
+        {
+            var openParenToken = token;
+
+            token = ReadTokenRaw();
+            while (token.Kind is not TokenKind.EndOfFile or TokenKind.CloseParen or TokenKind.CPPDirectiveEnd)
+            {
+                if (token.Kind is TokenKind.DotDotDot)
+                {
+                    isVariadic = true;
+                    token = ReadTokenRaw();
+                    break;
+                }
+                else if (token.Kind is TokenKind.CPPIdentifier)
+                {
+                    var parameterName = token.StringValue;
+                    if (parameterNames.Contains(parameterName))
+                        Context.ErrorDuplicateMacroParameter(token.Source, token.Location);
+
+                    parameterNames.Add(parameterName);
+                    token = ReadTokenRaw();
+
+                    if (token.Kind == TokenKind.Comma)
+                        token = ReadTokenRaw();
+                    else break;
+                }
+                else Context.ErrorExpectedToken(token.Source, token.Location, "an identifier");
+            }
+
+            if (token.Kind is not TokenKind.CloseParen)
+                Context.ErrorExpectedMatchingCloseDelimiter(token.Source, '(', ')', token.Location, openParenToken.Location);
+
+            if (token.Kind is not TokenKind.EndOfFile or TokenKind.CPPDirectiveEnd)
+                token = ReadTokenRaw();
+        }
+
+        var bodyTokens = new List<Token>();
+        while (token.Kind is not TokenKind.EndOfFile or TokenKind.CPPDirectiveEnd)
+        {
+            if (token.Kind is TokenKind.CPPIdentifier)
+            {
+                if (token.StringValue == "__VA_ARGS__")
+                {
+                }
+                else if (token.StringValue == "__VA_OPT__")
+                {
+                    //if (!LanguageOptions.CIsGNUMode || !LanguageOptions.CIsC23) Context.ExtFeatureIsAnExtension(token.Source, token.Location, "'__VA_OPT__'", "C23 or GNU");
+                }
+                else
+                {
+                }
+            }
+
+            bodyTokens.Add(token);
+            token = ReadTokenRaw();
+        }
+
+        var macroDef = new PreprocessorMacroDefinition(macroName, bodyTokens, parameterNames);
+
+        throw new NotImplementedException();
+        //if (SkipRemainingDirectiveTokens())
+        //    Context.WarningExtraTokensAtEndOfDirective(directiveToken.Source, directiveToken.Location, directiveToken.StringValue);
     }
 
     #endregion
