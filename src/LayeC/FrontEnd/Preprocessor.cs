@@ -12,8 +12,7 @@ public sealed class PreprocessorMacroDefinition(StringView name, IEnumerable<Tok
 
     public bool IsVariadic { get; init; }
     public bool IsFunctionLike { get; init; }
-
-    public bool RequiresPasting { get; } = tokens.Any(t => t.Kind == TokenKind.HashHash);
+    public bool RequiresPasting { get; init; }
 
     public bool IsExpanding { get; set; } = false;
 }
@@ -190,9 +189,10 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (ppToken.Language == SourceLanguage.C && ppToken is { Kind: TokenKind.Hash, IsAtStartOfLine: true } && IsLexingFile)
         {
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+            var directiveToken = ReadTokenRaw();
             using (var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
             {
-                var directiveToken = ReadTokenRaw();
                 DispatchDirectiveParser(SourceLanguage.C, directiveToken);
             }
 
@@ -205,15 +205,16 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 Context.ErrorCStylePreprocessingDirective(ppToken.Source, ppToken.Location);
 
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+            var directiveToken = ReadTokenRaw();
+            if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
+            {
+                Context.Todo("`pragma \"C\"` in Laye source files.");
+                throw new UnreachableException();
+            }
+
             using (var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
             {
-                var directiveToken = ReadTokenRaw();
-                if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
-                {
-                    Context.Todo("`pragma \"C\"` in Laye source files.");
-                    throw new UnreachableException();
-                }
-
                 DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
             }
 
@@ -231,6 +232,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         {
             Context.Assert(IsLexingFile, "Can only handle C preprocessor directives when lexing a source file.");
             Context.Assert(Language == SourceLanguage.C, "Can only handle C preprocessor directives if the lexer was switched to the C language mode.");
+
+            directiveToken.Language = SourceLanguage.C;
 
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
             Context.Assert(0 != (lexer.State & LexerState.CPPWithinDirective), "Can only handle C preprocessor directives if the lexer state has been switched to include CPPWithinDirective.");
@@ -410,6 +413,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         public bool IsVariadic { get; set; }
         public bool IsFunctionLike { get; set; }
+        public bool RequiresPasting { get; set; }
     }
 
     private void HandleDefineDirective(Token directiveToken)
@@ -492,16 +496,109 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             token = ReadTokenRaw();
         }
 
-        // TODO(local): process the replacement list
+        for (int i = 0; i < macroData.Tokens.Count; )
+        {
+            switch (macroData.Tokens[i++].Kind)
+            {
+                case TokenKind.Hash: DefineDirectiveCheckHash(macroData, i); break;
+                case TokenKind.HashHash: DefineDirectiveCheckHashHash(macroData, i); break;
+                case TokenKind.CPPVAOpt: token.CPPIntegerData = FindVAOptCloseParen(macroData, ref i); break;
+            }
+        }
 
         _macroDefs[macroData.Name] = new PreprocessorMacroDefinition(macroData.Name, macroData.Tokens, macroData.ParameterNames)
         {
             IsFunctionLike = macroData.IsFunctionLike,
             IsVariadic = macroData.IsVariadic,
+            RequiresPasting = macroData.RequiresPasting,
         };
 
         //if (SkipRemainingDirectiveTokens())
         //    Context.WarningExtraTokensAtEndOfDirective(directiveToken.Source, directiveToken.Location, directiveToken.StringValue);
+    }
+
+    private void DefineDirectiveCheckHash(ParsedMacroData macroData, int tokenIndex)
+    {
+        if (macroData.IsFunctionLike)
+        {
+            SourceLocation diagnosticLocation;
+            if (tokenIndex < macroData.Tokens.Count)
+            {
+                var token = macroData.Tokens[tokenIndex];
+                if (token.Kind is TokenKind.CPPVAOpt or TokenKind.CPPVAArgs or TokenKind.CPPMacroParam)
+                    return;
+
+                diagnosticLocation = token.Range.End + 1;
+            }
+            else diagnosticLocation = macroData.Tokens[^1].Range.End + 1;
+
+            Context.ErrorExpectedMacroParamOrVAOptAfterHash(macroData.Tokens[0].Source, diagnosticLocation);
+        }
+    }
+
+    private void DefineDirectiveCheckHashHash(ParsedMacroData macroData, int tokenIndex)
+    {
+        macroData.RequiresPasting = true;
+        // Note that the index is one-past the current token.
+        if (tokenIndex == 1)
+            Context.ErrorConcatenationTokenCannotStartMacro(macroData.Tokens[tokenIndex - 1]);
+        else if (tokenIndex >= macroData.Tokens.Count)
+            Context.ErrorConcatenationTokenCannotEndMacro(macroData.Tokens[tokenIndex - 1]);
+    }
+
+    private int FindVAOptCloseParen(ParsedMacroData macroData, ref int tokenIndex)
+    {
+        var token = SafeGetToken(tokenIndex);
+        if (token.Kind != TokenKind.OpenParen)
+        {
+            Context.ErrorExpectedToken(token.Source, token.Location, "'('");
+            return -1;
+        }
+
+        var openParenToken = token;
+        tokenIndex++;
+        
+        token = SafeGetToken(tokenIndex);
+        if (token.Kind == TokenKind.HashHash)
+            Context.ErrorConcatenationTokenCannotStartVAOpt(token);
+
+        int parenNesting = 1;
+        while (tokenIndex < macroData.Tokens.Count)
+        {
+            token = macroData.Tokens[tokenIndex];
+            tokenIndex++;
+
+            switch (token.Kind)
+            {
+                default: break;
+
+                case TokenKind.OpenParen: parenNesting++; break;
+                case TokenKind.CloseParen:
+                {
+                    parenNesting--;
+                    if (parenNesting == 0)
+                        return tokenIndex - 1;
+                } break;
+
+                case TokenKind.CPPVAOpt: Context.ErrorVAOptCannotBeNested(token); break;
+                case TokenKind.Hash: DefineDirectiveCheckHash(macroData, tokenIndex); break;
+
+                case TokenKind.HashHash:
+                {
+                    DefineDirectiveCheckHashHash(macroData, tokenIndex);
+                    if (parenNesting == 1 && SafeGetToken(tokenIndex).Kind == TokenKind.CloseParen)
+                        Context.ErrorConcatenationTokenCannotEndVAOpt(token);
+                } break;
+            }
+        }
+
+        Context.ErrorExpectedMatchingCloseDelimiter(token.Source, '(', ')', token.Range.End + 1, openParenToken.Location);
+        return -1;
+
+        Token SafeGetToken(int index)
+        {
+            return index < macroData.Tokens.Count ? macroData.Tokens[index] : Token.AnyEndOfFile;
+        }
     }
 
     #endregion

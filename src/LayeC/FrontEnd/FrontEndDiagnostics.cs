@@ -95,6 +95,24 @@ public static class FrontEndDiagnostics
     public static void ErrorAdjacentConcatenationTokens(this CompilerContext context, Token token) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3011", token.Source, token.Location, [], $"'##' cannot be followed by another '##'.");
 
+    public static void ErrorConcatenationTokenCannotStartMacro(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3012", token.Source, token.Location, [], $"'##' cannot be the first token inside a macro.");
+
+    public static void ErrorConcatenationTokenCannotEndMacro(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3013", token.Source, token.Location, [], $"'##' cannot be the last token inside a macro.");
+
+    public static void ErrorConcatenationTokenCannotStartVAOpt(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3014", token.Source, token.Location, [], $"'##' cannot be the first token inside '__VA_OPT__'.");
+
+    public static void ErrorConcatenationTokenCannotEndVAOpt(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3015", token.Source, token.Location, [], $"'##' cannot be the last token inside '__VA_OPT__'.");
+
+    public static void ErrorVAOptCannotBeNested(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3016", token.Source, token.Location, [], $"'__VA_OPT__' cannot be nested.");
+
+    public static void ErrorExpectedMacroParamOrVAOptAfterHash(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3017", source, location, [], $"Expected a parameter name or '__VA_OPT__' after '#'.");
+
     #endregion
 
     #region 4XXX - Syntactic Diagnostics

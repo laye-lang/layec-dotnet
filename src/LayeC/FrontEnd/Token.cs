@@ -11,7 +11,7 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     public static readonly Token AnyEndOfFile = new(TokenKind.EndOfFile, SourceLanguage.None, SourceText.Unknown, default);
 
     public TokenKind Kind { get; set; } = kind;
-    public SourceLanguage Language { get; } = language;
+    public SourceLanguage Language { get; set; } = language;
     public SourceText Source { get; } = source;
     public SourceRange Range { get; } = range;
     public SourceLocation Location { get; } = range.Begin;
@@ -42,8 +42,9 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
 
     public bool DisableExpansion { get; set; }
 
-    public bool IsCPPMacroParam { get; set; }
-    public int CPPMacroParamIndex { get; set; }
+    public int CPPIntegerData { get; set; }
+    public int MacroParameterIndex => CPPIntegerData;
+    public int VAOptCloseParenIndex => CPPIntegerData;
 
     string ITreeDebugNode.DebugNodeName { get; } = nameof(Token);
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "I know Array.Empty is quick and constant, there's no need to use a collection expression when the semantics in this case are unclear and may change.")]
