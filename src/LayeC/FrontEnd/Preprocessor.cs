@@ -24,7 +24,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     public Token[] PreprocessSource(SourceText source, SourceLanguage language)
     {
-        AddLexerForSourceText(source, language);
+        Context.Assert(_tokenStreams.Count == 0, "There should be no token streams left when preprocessing a new source file.");
+        PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions, language)));
 
         var tokens = new List<Token>();
         while (_tokenStreams.Count > 0)
@@ -82,10 +83,54 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
     }
 
-    private void AddLexerForSourceText(SourceText source, SourceLanguage language)
+    private void PushTokenStream(ITokenStream tokenStream)
     {
+        _tokenStreams.Push(tokenStream);
         MaterializedPeekedToken();
-        _tokenStreams.Push(new LexerTokenStream(new(Context, source, LanguageOptions, language)));
+    }
+
+    private void AddCIncludeLexerFromC(SourceText source)
+    {
+        PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions, SourceLanguage.C)));
+    }
+
+    private void AddCIncludeLexerFromLaye(SourceText source, Token layeSourceToken)
+    {
+        Token[] leadingTokens = [
+            new Token(TokenKind.KWPragma, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
+            {
+                Spelling = "pragma",
+                IsAtStartOfLine = true,
+                HasWhiteSpaceBefore = false,
+            },
+            new Token(TokenKind.LiteralString, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
+            {
+                Spelling = "\"C\"",
+                StringValue = "C",
+                HasWhiteSpaceBefore = true,
+            },
+            new Token(TokenKind.OpenCurly, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
+            {
+                Spelling = "{",
+                HasWhiteSpaceBefore = true,
+            }
+        ];
+
+        Token[] trailingTokens = [
+            new Token(TokenKind.CloseCurly, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
+            {
+                Spelling = "}",
+                HasWhiteSpaceBefore = true,
+            }
+        ];
+
+        var leadingTokenStream = new BufferTokenStream(leadingTokens);
+        var lexerStream = new LexerTokenStream(new(Context, source, LanguageOptions, SourceLanguage.C));
+        var trailingTokenStream = new BufferTokenStream(trailingTokens);
+
+        PushTokenStream(trailingTokenStream);
+        PushTokenStream(lexerStream);
+        PushTokenStream(leadingTokenStream);
     }
 
     private void PopTokenStream()
@@ -322,39 +367,54 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         {
             if (expansion.Expansion.Count == 0) return;
 
+            ITokenStream tokenStream = new BufferTokenStream(expansion.Expansion, expansion.MacroDefinition);
             if (expansion.SourceToken.Language == SourceLanguage.Laye)
             {
-                expansion.Expansion.Insert(0, new Token(TokenKind.KWPragma, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
-                {
-                    Spelling = "pragma",
-                    LeadingTrivia = expansion.SourceToken.LeadingTrivia,
-                });
+                Token[] leadingTokens = [
+                    new Token(TokenKind.KWPragma, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
+                    {
+                        Spelling = "pragma",
+                        LeadingTrivia = expansion.SourceToken.LeadingTrivia,
+                        IsAtStartOfLine = isAtStartOfLine,
+                        HasWhiteSpaceBefore = hasWhitespaceBefore,
+                    },
+                    new Token(TokenKind.LiteralString, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
+                    {
+                        Spelling = "\"C\"",
+                        StringValue = "C",
+                        HasWhiteSpaceBefore = true,
+                    },
+                    new Token(TokenKind.OpenParen, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
+                    {
+                        Spelling = "(",
+                        HasWhiteSpaceBefore = true,
+                    }
+                ];
 
-                expansion.Expansion.Insert(1, new Token(TokenKind.LiteralString, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
-                {
-                    Spelling = "\"C\"",
-                    StringValue = "C",
-                    HasWhiteSpaceBefore = true,
-                });
+                Token[] trailingTokens = [
+                    new Token(TokenKind.CloseParen, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
+                    {
+                        Spelling = ")",
+                        TrailingTrivia = expansion.SourceToken.TrailingTrivia,
+                        HasWhiteSpaceBefore = true,
+                    }
+                ];
 
-                expansion.Expansion.Insert(2, new Token(TokenKind.OpenParen, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
-                {
-                    Spelling = "(",
-                    HasWhiteSpaceBefore = true,
-                });
+                var leadingTokenStream = new BufferTokenStream(leadingTokens, expansion.MacroDefinition);
+                var trailingTokenStream = new BufferTokenStream(trailingTokens, expansion.MacroDefinition);
 
-                expansion.Expansion.Add(new Token(TokenKind.CloseParen, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
-                {
-                    Spelling = ")",
-                    TrailingTrivia = expansion.SourceToken.TrailingTrivia,
-                    HasWhiteSpaceBefore = true,
-                });
+                PushTokenStream(trailingTokenStream);
+                PushTokenStream(tokenStream);
+                PushTokenStream(leadingTokenStream);
+            }
+            else
+            {
+                var firstToken = expansion.Expansion[0];
+                firstToken.IsAtStartOfLine = isAtStartOfLine;
+                firstToken.HasWhiteSpaceBefore = hasWhitespaceBefore;
             }
 
-            var firstToken = expansion.Expansion[0];
-            firstToken.IsAtStartOfLine = isAtStartOfLine;
-            firstToken.HasWhiteSpaceBefore = hasWhitespaceBefore;
-            _tokenStreams.Push(new BufferTokenStream(expansion.Expansion, expansion.MacroDefinition));
+            _tokenStreams.Push(tokenStream);
         }
     }
 
@@ -398,6 +458,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         var directiveName = directiveToken.StringValue;
         if (directiveName == "define")
             HandleDefineDirective(directiveToken);
+        else if (directiveName == "include")
+            HandleIncludeDirective(language, directiveToken);
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
@@ -512,9 +574,40 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             IsVariadic = macroData.IsVariadic,
             RequiresPasting = macroData.RequiresPasting,
         };
+    }
 
-        //if (SkipRemainingDirectiveTokens())
-        //    Context.WarningExtraTokensAtEndOfDirective(directiveToken.Source, directiveToken.Location, directiveToken.StringValue);
+    private void HandleIncludeDirective(SourceLanguage language, Token directiveToken)
+    {
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        Token includePathToken;
+        using (var _ = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPHasHeaderNames))
+            includePathToken = ReadTokenRaw();
+
+        if (SkipRemainingDirectiveTokens())
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (includePathToken.Kind is not (TokenKind.LiteralString or TokenKind.CPPHeaderName))
+        {
+            Context.ErrorExpectedToken(includePathToken.Source, includePathToken.Location, "a header name");
+            return;
+        }
+
+        var includeSource = Context.GetSourceTextForFilePath(
+            (string)includePathToken.StringValue,
+            includePathToken.Kind == TokenKind.CPPHeaderName ? IncludeKind.System : IncludeKind.Local,
+            includePathToken.Source.Name
+        );
+
+        if (includeSource is null)
+        {
+            Context.ErrorCannotOpenSourceFile(includePathToken.Source, includePathToken.Location, includePathToken.StringValue);
+            return;
+        }
+
+        if (language == SourceLanguage.C)
+            AddCIncludeLexerFromC(includeSource);
+        else AddCIncludeLexerFromLaye(includeSource, directiveToken);
     }
 
     private void DefineDirectiveCheckHash(ParsedMacroData macroData, int tokenIndex)

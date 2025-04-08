@@ -9,6 +9,12 @@ using LayeC.Source;
 
 namespace LayeC;
 
+public enum IncludeKind
+{
+    System,
+    Local,
+}
+
 public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target target)
 {
     private readonly Dictionary<DiagnosticSemantic, DiagnosticLevel> _semanticLevels = new()
@@ -25,6 +31,31 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
 
     public DiagnosticEngine Diag { get; } = new(diagConsumer);
     public Target Target { get; } = target;
+
+    public required IncludePaths IncludePaths { get; init; }
+
+    public SourceText? GetSourceTextForFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
+    {
+        if (kind == IncludeKind.Local)
+        {
+            Assert(relativeToPath is not null, "Cannot resolve a local include path if there was no relative path provided.");
+            filePath = IncludePaths.ResolveIncludePath(filePath, relativeToPath);
+        }
+        else filePath = IncludePaths.ResolveIncludePath(filePath);
+
+        if (!File.Exists(filePath))
+            return null;
+
+        try
+        {
+            string sourceText = File.ReadAllText(filePath);
+            return new(filePath, sourceText);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
 #pragma warning disable IDE0060 // Remove unused parameter
     private DiagnosticLevel MapSemantic(DiagnosticSemantic semantic, string id)

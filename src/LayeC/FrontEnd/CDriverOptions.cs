@@ -20,6 +20,8 @@ public sealed class CDriverOptions
 
     public LanguageStandardKinds Standards { get; set; }
 
+    public IncludePaths IncludePaths { get; set; } = new();
+
     protected override void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, BaseCompilerDriverParseState state)
     {
         var inputFile = new FileInfo(value);

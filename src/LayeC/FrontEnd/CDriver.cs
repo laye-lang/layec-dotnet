@@ -47,8 +47,12 @@ public sealed class CDriver
     private CDriver(string programName, IDiagnosticConsumer diagConsumer, CDriverOptions options)
     {
         ProgramName = programName;
-        Context = new CompilerContext(diagConsumer, Target.X86_64);
         Options = options;
+
+        Context = new CompilerContext(diagConsumer, Target.X86_64)
+        {
+            IncludePaths = Options.IncludePaths,
+        };
     }
 
     public int Execute()

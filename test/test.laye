@@ -1,3 +1,8 @@
-pragma define FOO 1 + 2
-int foo() => pragma "C" (3 * 4) + FOO;
+//pragma define FOO 1 + 2
+pragma include "foo.h"
 
+pragma "C" {
+#define BAR 10
+}
+
+int32 foo() => pragma "C" (3 * 4) + FOO * BAR;

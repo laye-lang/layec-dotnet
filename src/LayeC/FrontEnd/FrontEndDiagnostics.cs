@@ -23,6 +23,9 @@ public static class FrontEndDiagnostics
         throw new UnreachableException();
     }
 
+    public static void ErrorCannotOpenSourceFile(this CompilerContext context, SourceText source, SourceLocation location, StringView filePath) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "0003", source, location, [], $"Cannot open source file '{filePath}'.");
+
     #endregion
 
     #region 1XXX - Extension Diagnostics
@@ -56,8 +59,8 @@ public static class FrontEndDiagnostics
 
     #region 3XXX - Preprocessing Diagnostics
 
-    public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, SourceText source, SourceLocation location, StringView directiveKind) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Warning, "3001", source, location, [], $"Extra tokens at end of '{directiveKind}' directive.");
+    public static void WarningExtraTokensAtEndOfDirective(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Warning, "3001", directiveToken.Source, directiveToken.Location, [], $"Extra tokens at end of '{directiveToken.StringValue}' directive.");
 
     public static void ErrorCStylePreprocessingDirective(this CompilerContext context, SourceText source, SourceLocation location)
     {
