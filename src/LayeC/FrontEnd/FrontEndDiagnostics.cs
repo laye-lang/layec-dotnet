@@ -28,7 +28,7 @@ public static class FrontEndDiagnostics
     #region 1XXX - Extension Diagnostics
 
     public static void ExtVAOpt(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], "'__VA_OPT__' is a C23 or GNU extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], "'__VA_OPT__' is a C23 extension.");
 
     #endregion
 

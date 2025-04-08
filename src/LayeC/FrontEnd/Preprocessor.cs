@@ -479,7 +479,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 else if (token.StringValue == "__VA_OPT__")
                 {
                     token.Kind = TokenKind.CPPVAOpt;
-                    if (!LanguageOptions.CIsGNUMode && !LanguageOptions.CIsC23)
+                    if (!LanguageOptions.CIsC23)
                         Context.ExtVAOpt(token.Source, token.Location);
                 }
                 else if (macroData.ParameterNames.Contains(token.StringValue))
