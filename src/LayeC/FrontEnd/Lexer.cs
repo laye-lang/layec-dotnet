@@ -39,6 +39,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
     private int _readPosition;
     private bool _isAtStartOfLine = true;
+    private bool _hasWhiteSpaceBefore = false;
 
     private bool IsAtEnd => _readPosition >= Source.Text.Length;
     private char CurrentCharacter => PeekCharacter(0, out int _);
@@ -184,6 +185,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 // the character peeker automatically transforms all forms of newline to just \n, so this one case should grab all valid newlines the lexer recognizes.
                 case '\n' when !State.HasFlag(LexerState.CPPWithinDirective):
                 {
+                    _hasWhiteSpaceBefore = true;
                     Advance();
                     _trivia.Add(new TriviumNewLine(GetRange(beginLocation)));
                     // Trailing trivia always ends with a newline if encountered.
@@ -192,6 +194,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
                 case ' ' or '\t' or '\v':
                 {
+                    _hasWhiteSpaceBefore = true;
                     Advance();
                     while (!IsAtEnd && CurrentCharacter is ' ' or '\t' or '\v')
                         Advance();
@@ -201,6 +204,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 // line comments are not available in C89 without extensions enabled. Laye is fine.
                 case '/' when PeekCharacter(1) == '/' && (Language == SourceLanguage.Laye || LanguageOptions.CHasLineComments):
                 {
+                    _hasWhiteSpaceBefore = true;
                     Advance(2);
                     while (!IsAtEnd && CurrentCharacter is not '\n')
                         Advance();
@@ -209,6 +213,8 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
                 case '/' when PeekCharacter(1) == '*':
                 {
+                    _hasWhiteSpaceBefore = true;
+
                     Advance(2);
 
                     int depth = 1;
@@ -238,6 +244,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 // This allows running soiurce files as scripts on Unix systems without also making `#` or `#!` line comment sequences anywhere else.
                 case '#' when _readPosition == 0 && PeekCharacter(1) == '!':
                 {
+                    _hasWhiteSpaceBefore = true;
                     Advance(2);
                     while (!IsAtEnd && CurrentCharacter is not '\n')
                         Advance();
@@ -286,8 +293,10 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
         var tokenKind = TokenKind.Invalid;
         var tokenLanguage = Language;
         bool isAtStartOfLine = _isAtStartOfLine;
+        bool hasWhiteSpaceBefore = _hasWhiteSpaceBefore;
 
         _isAtStartOfLine = false;
+        _hasWhiteSpaceBefore = false;
 
         char c = CurrentCharacter;
         Advance();
@@ -396,6 +405,23 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 var tokenTextBuilder = new StringBuilder();
                 tokenTextBuilder.Append(c);
 
+                tokenKind = Language == SourceLanguage.C ? TokenKind.CPPIdentifier : TokenKind.Identifier;
+                //tokenKind = TokenKind.CPPIdentifier;
+
+                while (SyntaxFacts.IsIdentifierContinue(Language, CurrentCharacter))
+                {
+                    tokenTextBuilder.Append(CurrentCharacter);
+                    Advance();
+                }
+
+                stringValue = tokenTextBuilder.ToString();
+            } break;
+
+            case '@' when Language == SourceLanguage.Laye && CurrentCharacter is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '$':
+            {
+                Context.Assert(SyntaxFacts.IsIdentifierStart(Language, CurrentCharacter), $"Inline pattern failed for expected identifier start character '{c}'.");
+
+                var tokenTextBuilder = new StringBuilder();
                 tokenKind = TokenKind.CPPIdentifier;
 
                 while (SyntaxFacts.IsIdentifierContinue(Language, CurrentCharacter))
@@ -601,7 +627,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
         var trailingTrivia = ReadTrivia(isLeading: false);
 
-        if (tokenLanguage == SourceLanguage.Laye && tokenKind == TokenKind.CPPIdentifier)
+        if (tokenLanguage == SourceLanguage.Laye && tokenKind == TokenKind.Identifier)
         {
             if (LanguageOptions.TryGetLayeKeywordKind(stringValue, out var keywordTokenKind))
                 tokenKind = keywordTokenKind;
@@ -630,6 +656,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
         return new(tokenKind, tokenLanguage, Source, tokenRange)
         {
             IsAtStartOfLine = isAtStartOfLine,
+            HasWhiteSpaceBefore = hasWhiteSpaceBefore,
 
             LeadingTrivia = leadingTrivia,
             TrailingTrivia = trailingTrivia,

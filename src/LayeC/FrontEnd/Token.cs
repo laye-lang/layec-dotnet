@@ -25,16 +25,10 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
 
     public bool IsAtStartOfLine { get; set; } = false;
     public bool IsAtEndOfLine => TrailingTrivia.Trivia.Any(t => t is TriviumNewLine or TriviumLineComment);
+    public bool HasWhiteSpaceBefore { get; set; }
 
     public TriviaList LeadingTrivia { get; init; } = TriviaList.EmptyLeading;
     public TriviaList TrailingTrivia { get; init; } = TriviaList.EmptyTrailing;
-
-    private bool? _overrideWhitespaceBeforeState;
-    public bool HasWhiteSpaceBefore
-    {
-        get => _overrideWhitespaceBeforeState ?? LeadingTrivia.Trivia.Count != 0;
-        set => _overrideWhitespaceBeforeState = value;
-    }
 
     public StringView StringValue { get; init; }
     public BigInteger IntegerValue { get; init; }
@@ -48,5 +42,15 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
 
     string ITreeDebugNode.DebugNodeName { get; } = nameof(Token);
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "I know Array.Empty is quick and constant, there's no need to use a collection expression when the semantics in this case are unclear and may change.")]
-    IEnumerable<ITreeDebugNode> ITreeDebugNode.Children { get; } = Array.Empty<ITreeDebugNode>();
+    IEnumerable<ITreeDebugNode> ITreeDebugNode.Children
+    {
+        get
+        {
+            if (LeadingTrivia.Trivia.Count != 0)
+                yield return LeadingTrivia;
+
+            if (TrailingTrivia.Trivia.Count != 0)
+                yield return TrailingTrivia;
+        }
+    }
 }

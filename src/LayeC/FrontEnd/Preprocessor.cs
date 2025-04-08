@@ -20,6 +20,17 @@ public sealed class PreprocessorMacroDefinition(StringView name, IEnumerable<Tok
 
 public sealed class Preprocessor(CompilerContext context, LanguageOptions languageOptions)
 {
+    public static string StringizeToken(Token token, bool escape)
+    {
+        switch (token.Kind)
+        {
+            default: return (string)token.Spelling;
+            case TokenKind.Invalid: return "<INVALID>";
+            case TokenKind.UnexpectedCharacter: return "<?>";
+            case TokenKind.EndOfFile: return "<EOF>";
+        }
+    }
+
     private CompilerContext Context { get; } = context;
     private LanguageOptions LanguageOptions { get; } = languageOptions;
 
@@ -104,7 +115,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             {
                 Spelling = "pragma",
                 IsAtStartOfLine = true,
-                HasWhiteSpaceBefore = false,
             },
             new Token(TokenKind.LiteralString, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {
@@ -123,6 +133,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             new Token(TokenKind.CloseCurly, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {
                 Spelling = "}",
+                IsAtStartOfLine = true,
                 HasWhiteSpaceBefore = true,
             }
         ];
@@ -304,7 +315,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
             Context.Assert(0 != (lexer.State & LexerState.CPPWithinDirective), "Can only handle C preprocessor directives if the lexer state has been switched to include CPPWithinDirective.");
 
-            if (directiveToken.Kind != TokenKind.CPPIdentifier)
+            if (directiveToken.Kind is not (TokenKind.CPPIdentifier or TokenKind.Identifier))
             {
                 Context.ErrorExpectedPreprocessorDirective(directiveToken.Source, directiveToken.Location);
                 SkipRemainingDirectiveTokens();
@@ -550,7 +561,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void HandleDirective(SourceLanguage language, Token directiveToken)
     {
-        Context.Assert(directiveToken.Kind == TokenKind.CPPIdentifier, "Can only handle identifier directives.");
+        Context.Assert(directiveToken.Kind is (TokenKind.CPPIdentifier or TokenKind.Identifier), "Can only handle identifier directives.");
 
         var directiveName = directiveToken.StringValue;
         if (directiveName == "define")

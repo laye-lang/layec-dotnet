@@ -5,4 +5,4 @@ pragma "C" {
 #define BAR 10
 }
 
-int32 foo() => pragma "C" (3 * 4) + FOO * BAR;
+int32 foo() => pragma "C" (3 * 4) + @FOO * @BAR;

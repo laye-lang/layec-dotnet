@@ -55,8 +55,12 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
     public int CompareTo(string? other) => other is null ? NullSortOrderValue : Span.CompareTo(other.AsSpan(), StringComparison.Ordinal);
     public int CompareTo(string? other, StringComparison comparisonType) => other is null ? NullSortOrderValue : Span.CompareTo(other.AsSpan(), comparisonType);
 
-    public IEnumerator<char> GetEnumerator() => new StringViewEnumerator(this);
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    public IEnumerator<char> GetEnumerator()
+    {
+        for (int i = 0; i < Length; i++)
+            yield return Memory.Span[i];
+    }
 
     public bool StartsWith(string s) => StartsWith(s.AsSpan());
     public bool StartsWith(ReadOnlyMemory<char> m) => StartsWith(m.Span);
@@ -89,24 +93,5 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
         }
 
         return true;
-    }
-
-    private sealed class StringViewEnumerator(StringView sv)
-        : IEnumerator<char>
-    {
-        private readonly StringView _value = sv;
-        private int _index = 0;
-
-        public char Current => _index < _value.Length ? _value[_index] : '\0';
-        object IEnumerator.Current => Current;
-
-        public bool MoveNext()
-        {
-            _index++;
-            return _index >= _value.Length;
-        }
-
-        public void Reset() => _index = 0;
-        public void Dispose() { }
     }
 }

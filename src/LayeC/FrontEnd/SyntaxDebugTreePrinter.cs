@@ -22,6 +22,8 @@ public sealed class SyntaxDebugTreePrinter(bool useColor)
         switch (node)
         {
             case Token token: PrintTokenInfo(token); break;
+            case TriviaList trivia: PrintTriviaList(trivia); break;
+            case Trivium trivium: PrintTrivium(trivium); break;
         }
 
         Console.WriteLine();
@@ -52,5 +54,15 @@ public sealed class SyntaxDebugTreePrinter(bool useColor)
         SetColor(ColorMisc);
         Console.Write(' ');
         Console.Write(token.Spelling);
+    }
+
+    private void PrintTriviaList(TriviaList trivia)
+    {
+        SetColor(ColorProperty);
+        Console.Write(trivia.IsLeading ? " Leading" : " Trailing");
+    }
+
+    private void PrintTrivium(Trivium trivium)
+    {
     }
 }
