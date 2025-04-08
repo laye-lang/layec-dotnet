@@ -132,7 +132,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
     public IDisposable PushMode(SourceLanguage language) => PushMode(language, State);
     public IDisposable PushMode(LexerState state) => PushMode(Language, state);
-    public IDisposable PushMode(SourceLanguage language, LexerState state) => new ScopedLexerModeDisposable(this, language, state);
+    public IDisposable PushMode(SourceLanguage language, LexerState state, Action? onExit = null) => new ScopedLexerModeDisposable(this, language, state, onExit);
 
     private sealed class ScopedLexerModeDisposable
         : IDisposable
@@ -140,13 +140,16 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
         private readonly Lexer _lexer;
         private readonly SourceLanguage _language;
         private readonly LexerState _state;
+        private readonly Action? _onExit;
 
-        public ScopedLexerModeDisposable(Lexer lexer, SourceLanguage language, LexerState state)
+        public ScopedLexerModeDisposable(Lexer lexer, SourceLanguage language, LexerState state, Action? onExit)
         {
             _lexer = lexer;
 
             _language = lexer.Language;
             _state = lexer.State;
+
+            _onExit = onExit;
 
             lexer.Language = language;
             lexer.State = state;
@@ -156,6 +159,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
         {
             _lexer.Language = _language;
             _lexer.State = _state;
+            _onExit?.Invoke();
         }
     }
 

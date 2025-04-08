@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 using LayeC.Source;
 
@@ -50,7 +51,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private readonly Dictionary<StringView, PreprocessorMacroDefinition> _macroDefs = [];
 
-    private bool IsLexingFile => _peekedRawToken is null && _tokenStreams.TryPeek(out var ts) && ts is LexerTokenStream;
+    private bool _withinExpressionPragmaC = false;
+    private bool IsInLexer => _peekedRawToken is null && _tokenStreams.TryPeek(out var ts) && ts is LexerTokenStream;
+    private bool ArePreprocessorDirectivesAllowed => !_withinExpressionPragmaC && IsInLexer;
 
     private SourceText Source
     {
@@ -174,7 +177,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
     private Token ReadAndExpandToken()
     {
         var ppToken = ReadTokenRaw();
-        return Preprocess(ppToken);
+        if (Preprocess(ppToken) is { } preprocessedToken)
+            return preprocessedToken;
+        else return ReadAndExpandToken();
     }
 
     private Token ReadTokenRaw()
@@ -229,9 +234,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
     }
 
-    private Token Preprocess(Token ppToken)
+    /// <summary>
+    /// Returns null when this token resulted in some form of preprocessor expansion, else the token.
+    /// </summary>
+    private Token? Preprocess(Token ppToken)
     {
-        if (ppToken.Language == SourceLanguage.C && ppToken is { Kind: TokenKind.Hash, IsAtStartOfLine: true } && IsLexingFile)
+        if (ppToken.Language == SourceLanguage.C && ppToken is { Kind: TokenKind.Hash, IsAtStartOfLine: true } && ArePreprocessorDirectivesAllowed)
         {
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
 
@@ -241,10 +249,10 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 DispatchDirectiveParser(SourceLanguage.C, directiveToken);
             }
 
-            return Preprocess(ReadTokenRaw());
+            return null;
         }
 
-        if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma or TokenKind.Hash, IsAtStartOfLine: true } && IsLexingFile)
+        if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma or TokenKind.Hash, DisableExpansion: false, IsAtStartOfLine: true } && ArePreprocessorDirectivesAllowed)
         {
             if (ppToken.Kind == TokenKind.Hash)
                 Context.ErrorCStylePreprocessingDirective(ppToken.Source, ppToken.Location);
@@ -254,20 +262,28 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             var directiveToken = ReadTokenRaw();
             if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
             {
-                Context.Todo("`pragma \"C\"` in Laye source files.");
-                throw new UnreachableException();
+                return HandlePragmaC(false, lexer, ppToken, directiveToken);
             }
-
-            using (var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
+            else
             {
-                DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+                using (var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
+                {
+                    DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+                }
             }
 
-            return Preprocess(ReadTokenRaw());
+            return null;
+        }
+
+        if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma, DisableExpansion: false } && IsInLexer && NextRawPPToken.Kind == TokenKind.LiteralString && NextRawPPToken.StringValue == "C")
+        {
+            var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+            var directiveToken = ReadTokenRaw();
+            return HandlePragmaC(true, lexer, ppToken, directiveToken);
         }
 
         if (ppToken.Kind == TokenKind.CPPIdentifier && MaybeExpandMacro(ppToken))
-            return Preprocess(ReadTokenRaw());
+            return null;
 
         // TODO(local): concat adjacent string literals in C?
 
@@ -275,7 +291,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         void DispatchDirectiveParser(SourceLanguage language, Token directiveToken)
         {
-            Context.Assert(IsLexingFile, "Can only handle C preprocessor directives when lexing a source file.");
+            Context.Assert(ArePreprocessorDirectivesAllowed, directiveToken.Source, directiveToken.Location, "Can only handle C preprocessor directives when lexing a source file.");
             Context.Assert(Language == SourceLanguage.C, "Can only handle C preprocessor directives if the lexer was switched to the C language mode.");
 
             directiveToken.Language = SourceLanguage.C;
@@ -289,6 +305,83 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 SkipRemainingDirectiveTokens();
             }
             else HandleDirective(language, directiveToken);
+        }
+
+        Token? HandlePragmaC(bool expressionOnly, Lexer lexer, Token pragmaToken, Token cStringToken)
+        {
+            pragmaToken.DisableExpansion = true;
+
+            var openDelimiterToken = ReadTokenRaw();
+            if (expressionOnly)
+            {
+                if (openDelimiterToken.Kind is not TokenKind.OpenParen)
+                {
+                    Context.ErrorExpectedToken(openDelimiterToken.Source, openDelimiterToken.Location, "'('");
+                    return Preprocess(openDelimiterToken);
+                }
+            }
+            else
+            {
+                if (openDelimiterToken.Kind is not (TokenKind.OpenParen or TokenKind.OpenCurly))
+                {
+                    Context.ErrorExpectedToken(openDelimiterToken.Source, openDelimiterToken.Location, "'(' or '{'");
+                    return Preprocess(openDelimiterToken);
+                }
+            }
+
+            TokenKind closeDelimiterKind = TokenKind.CloseCurly;
+            if (openDelimiterToken.Kind == TokenKind.OpenParen)
+            {
+                _withinExpressionPragmaC = true;
+                closeDelimiterKind = TokenKind.CloseParen;
+            }
+
+            var pragmaTokenBody = new List<Token>();
+            int delimiterNesting = 1;
+
+            Token token;
+            using (var _ = lexer.PushMode(SourceLanguage.C, lexer.State, () => _withinExpressionPragmaC = false))
+            {
+                while (true)
+                {
+                    token = ReadTokenRaw();
+                    Debug.Assert(token.Language == SourceLanguage.C);
+
+                    if (token.Kind == closeDelimiterKind)
+                    {
+                        delimiterNesting--;
+                        if (delimiterNesting == 0)
+                        {
+                            token.Language = SourceLanguage.Laye;
+                            break;
+                        }
+                    }
+
+                    if (Preprocess(token) is { } preprocessedToken)
+                        pragmaTokenBody.Add(preprocessedToken);
+                }
+            }
+
+            Context.Assert(_withinExpressionPragmaC == false, "This should have been reset at the end of the previous using scope.");
+
+            Token? closeDelimiterToken = token;
+            if (delimiterNesting > 0)
+            {
+                closeDelimiterToken = null;
+                Context.ErrorExpectedMatchingCloseDelimiter(
+                    openDelimiterToken.Source,
+                    openDelimiterToken.Kind == TokenKind.OpenCurly ? '{' : '(',
+                    openDelimiterToken.Kind == TokenKind.OpenCurly ? '}' : ')',
+                    token.Range.End,
+                    openDelimiterToken.Location
+                );
+            }
+
+            if (closeDelimiterToken is not null)
+                PushTokenStream(new BufferTokenStream([closeDelimiterToken]));
+            PushTokenStream(new BufferTokenStream(pragmaTokenBody));
+            PushTokenStream(new BufferTokenStream([pragmaToken, cStringToken, openDelimiterToken]));
+            return null;
         }
     }
 
@@ -412,9 +505,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 var firstToken = expansion.Expansion[0];
                 firstToken.IsAtStartOfLine = isAtStartOfLine;
                 firstToken.HasWhiteSpaceBefore = hasWhitespaceBefore;
+                PushTokenStream(tokenStream);
             }
-
-            _tokenStreams.Push(tokenStream);
         }
     }
 
