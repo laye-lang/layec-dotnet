@@ -116,6 +116,9 @@ public static class FrontEndDiagnostics
     public static void ErrorExpectedMacroParamOrVAOptAfterHash(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3017", source, location, [], $"Expected a parameter name or '__VA_OPT__' after '#'.");
 
+    public static void WarningPotentialPreprocessorDirectiveInPragmaCExpression(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3016", token.Source, token.Location, [], $"C preprocessor directives are not processed within 'pragma \"C\" ( )' expressions.");
+
     #endregion
 
     #region 4XXX - Syntactic Diagnostics

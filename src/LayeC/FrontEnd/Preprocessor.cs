@@ -252,6 +252,11 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return null;
         }
 
+        if (ppToken.Language == SourceLanguage.C && ppToken is { Kind: TokenKind.Hash, IsAtStartOfLine: true } && _withinExpressionPragmaC)
+        {
+            Context.WarningPotentialPreprocessorDirectiveInPragmaCExpression(ppToken);
+        }
+
         if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma or TokenKind.Hash, DisableExpansion: false, IsAtStartOfLine: true } && ArePreprocessorDirectivesAllowed)
         {
             if (ppToken.Kind == TokenKind.Hash)
