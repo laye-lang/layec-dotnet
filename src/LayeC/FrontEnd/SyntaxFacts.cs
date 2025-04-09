@@ -207,7 +207,9 @@ public static class SyntaxFacts
             or UnicodeCategory.LowercaseLetter
             or UnicodeCategory.TitlecaseLetter
             or UnicodeCategory.ModifierLetter
-            or UnicodeCategory.OtherLetter;
+            or UnicodeCategory.OtherLetter
+            or UnicodeCategory.OtherSymbol
+            or UnicodeCategory.Surrogate;
     }
 
     public static bool IsLayeIdentifierContinue(char c)
@@ -226,6 +228,8 @@ public static class SyntaxFacts
             or UnicodeCategory.SpacingCombiningMark
             or UnicodeCategory.DecimalDigitNumber
             or UnicodeCategory.ConnectorPunctuation
-            or UnicodeCategory.Format;
+            or UnicodeCategory.Format
+            or UnicodeCategory.OtherSymbol
+            or UnicodeCategory.Surrogate;
     }
 }

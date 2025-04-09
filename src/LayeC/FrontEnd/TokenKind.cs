@@ -16,6 +16,7 @@ public enum TokenKind
     CPPMacroParam,
     CPPHeaderName,
     CPPDirectiveEnd,
+    CPPLayeMacroWrapperIdentifier,
 
     Hash,
     HashHash,

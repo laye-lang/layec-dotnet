@@ -100,8 +100,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void PushTokenStream(ITokenStream tokenStream)
     {
-        _tokenStreams.Push(tokenStream);
         MaterializedPeekedToken();
+        _tokenStreams.Push(tokenStream);
     }
 
     private void AddCIncludeLexerFromC(SourceText source)

@@ -71,8 +71,8 @@ public sealed class LayeDriver
             var sourceLanguage = file.Extension is ".c" or ".h" ? SourceLanguage.C : SourceLanguage.Laye;
 
             var tokens = preprocessor.PreprocessSource(source, sourceLanguage);
-            foreach (var token in tokens) debugPrinter.PrintToken(token);
-            //foreach (var token in tokens) ppOutputWriter.WriteToken(token);
+            //foreach (var token in tokens) debugPrinter.PrintToken(token);
+            foreach (var token in tokens) ppOutputWriter.WriteToken(token);
         }
 
         return 0;

@@ -1,12 +1,6 @@
-#!/usr/bin/env rlayec
-
-//pragma define FOO 1 + 2
-pragma include "foo.h"
-
-pragma "C" {
-#define BAR 10
+void main() {
+    // option 1
+    pragma "C" ( SetBackgroundColorImpl_(((Color){(10), (20), (30)})) );
+    // option 2
+    pragma "C-delayed-macro" [C] { SetBackgroundColorImpl_(C) } (Color { 10, 20, 30 });
 }
-
-// this is a test
-int32 foo() =>
-    pragma "C" (3 * 4) + @FOO * @BAR;

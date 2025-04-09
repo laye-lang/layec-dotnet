@@ -17,7 +17,10 @@ public sealed class LayeDriverOptions
     : BaseCompilerDriverOptions<LayeDriverOptions, BaseCompilerDriverParseState>
 {
     public LayeCompilerCommand Command { get; set; } = LayeCompilerCommand.Compile;
+    public DriverStage DriverStage { get; set; } = DriverStage.Assemble;
+    public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Default;
 
+    public string? OutputFile { get; set; }
     public List<(string Name, FileInfo File)> InputFiles { get; set; } = [];
 
     public LanguageStandardKinds Standards { get; set; }
@@ -43,10 +46,68 @@ public sealed class LayeDriverOptions
             case "--format": Command = LayeCompilerCommand.Format; break;
             case "--lsp" or "--language-server": Command = LayeCompilerCommand.LanguageServer; break;
 
+            case "--preprocess" or "-E": DriverStage = DriverStage.Preprocess; break;
+            case "--parse" or "-fsyntax-only": DriverStage = DriverStage.Parse; break;
+            case "--sema": DriverStage = DriverStage.Sema; break;
+            case "--codegen": DriverStage = DriverStage.Codegen; break;
+            case "--compile" or "-S": DriverStage = DriverStage.Compile; break;
+            case "--assemble" or "-c": DriverStage = DriverStage.Assemble; break;
+
+            case "--emit-gas" or "-emit-gas": AssemblerFormat = AssemblerFormat.GAS; break;
+            case "--emit-nasm" or "-emit-nasm": AssemblerFormat = AssemblerFormat.NASM; break;
+            case "--emit-fasm" or "-emit-fasm": AssemblerFormat = AssemblerFormat.FASM; break;
+            case "--emit-qbe" or "-emit-qbe": AssemblerFormat = AssemblerFormat.QBE; break;
+            case "--emit-llvm" or "-emit-llvm": AssemblerFormat = AssemblerFormat.LLVM; break;
+
+            case "-o":
+            {
+                if (!args.Shift(out string includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-o' requires an argument.");
+                else OutputFile = includePath;
+            } break;
+
+            case string when arg.StartsWith("-o="):
+            {
+                string includePath = arg[3..];
+                if (string.IsNullOrWhiteSpace(includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-o' requires an argument.");
+                else OutputFile = includePath;
+            } break;
+
             case string when arg.StartsWith("-std="): ParseStd(arg[5..]); break;
             case string when arg.StartsWith("--std="): ParseStd(arg[6..]); break;
             case string when arg.StartsWith("-cstd="): ParseCStd(arg[6..]); break;
             case string when arg.StartsWith("--cstd="): ParseCStd(arg[7..]); break;
+
+            case "-I":
+            {
+                if (!args.Shift(out string includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-I' requires an argument.");
+                else IncludePaths.AddSystemIncludePath(includePath);
+            } break;
+
+            case string when arg.StartsWith("-I="):
+            {
+                string includePath = arg[3..];
+                if (string.IsNullOrWhiteSpace(includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-I' requires an argument.");
+                else IncludePaths.AddSystemIncludePath(includePath);
+            } break;
+
+            case "-iquote":
+            {
+                if (!args.Shift(out string includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-iquote' requires an argument.");
+                else IncludePaths.AddLocalIncludePath(includePath);
+            } break;
+
+            case string when arg.StartsWith("-iquote="):
+            {
+                string includePath = arg[8..];
+                if (string.IsNullOrWhiteSpace(includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-iquote' requires an argument.");
+                else IncludePaths.AddSystemIncludePath(includePath);
+            } break;
         }
 
         void ParseCStd(string shortName)

@@ -399,6 +399,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
             } break;
 
             case (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '$':
+            case char when SyntaxFacts.IsIdentifierStart(Language, c):
             {
                 Context.Assert(SyntaxFacts.IsIdentifierStart(Language, c), $"Inline pattern failed for expected identifier start character '{c}'.");
 
@@ -417,12 +418,28 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 stringValue = tokenTextBuilder.ToString();
             } break;
 
-            case '@' when Language == SourceLanguage.Laye && CurrentCharacter is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '$':
+            case '#' when Language == SourceLanguage.Laye && SyntaxFacts.IsIdentifierStart(Language, CurrentCharacter):
             {
                 Context.Assert(SyntaxFacts.IsIdentifierStart(Language, CurrentCharacter), $"Inline pattern failed for expected identifier start character '{c}'.");
 
                 var tokenTextBuilder = new StringBuilder();
                 tokenKind = TokenKind.CPPIdentifier;
+
+                while (SyntaxFacts.IsIdentifierContinue(Language, CurrentCharacter))
+                {
+                    tokenTextBuilder.Append(CurrentCharacter);
+                    Advance();
+                }
+
+                stringValue = tokenTextBuilder.ToString();
+            } break;
+
+            case '@' when Language == SourceLanguage.Laye && SyntaxFacts.IsIdentifierStart(Language, CurrentCharacter):
+            {
+                Context.Assert(SyntaxFacts.IsIdentifierStart(Language, CurrentCharacter), $"Inline pattern failed for expected identifier start character '{c}'.");
+
+                var tokenTextBuilder = new StringBuilder();
+                tokenKind = TokenKind.CPPLayeMacroWrapperIdentifier;
 
                 while (SyntaxFacts.IsIdentifierContinue(Language, CurrentCharacter))
                 {
