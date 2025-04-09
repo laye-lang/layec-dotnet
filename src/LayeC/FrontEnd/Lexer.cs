@@ -187,7 +187,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 {
                     _hasWhiteSpaceBefore = true;
                     Advance();
-                    _trivia.Add(new TriviumNewLine(GetRange(beginLocation)));
+                    _trivia.Add(new TriviumNewLine(Source, GetRange(beginLocation)));
                     // Trailing trivia always ends with a newline if encountered.
                     if (!isLeading) goto return_trivia;
                 } break;
@@ -198,7 +198,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                     Advance();
                     while (!IsAtEnd && CurrentCharacter is ' ' or '\t' or '\v')
                         Advance();
-                    _trivia.Add(new TriviumWhiteSpace(GetRange(beginLocation)));
+                    _trivia.Add(new TriviumWhiteSpace(Source, GetRange(beginLocation)));
                 } break;
 
                 // line comments are not available in C89 without extensions enabled. Laye is fine.
@@ -208,7 +208,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                     Advance(2);
                     while (!IsAtEnd && CurrentCharacter is not '\n')
                         Advance();
-                    _trivia.Add(new TriviumLineComment(GetRange(beginLocation)));
+                    _trivia.Add(new TriviumLineComment(Source, GetRange(beginLocation)));
                 } break;
 
                 case '/' when PeekCharacter(1) == '*':
@@ -237,7 +237,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                     if (depth > 0)
                         Context.ErrorUnclosedComment(Source, beginLocation);
 
-                    _trivia.Add(new TriviumDelimitedComment(GetRange(beginLocation)));
+                    _trivia.Add(new TriviumDelimitedComment(Source, GetRange(beginLocation)));
                 } break;
 
                 // A shebang, `#!`, at the very start of the file is treated as a line comment.
@@ -248,7 +248,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                     Advance(2);
                     while (!IsAtEnd && CurrentCharacter is not '\n')
                         Advance();
-                    _trivia.Add(new TriviumShebangComment(GetRange(beginLocation)));
+                    _trivia.Add(new TriviumShebangComment(Source, GetRange(beginLocation)));
                 } break;
 
                 // when nothing matches, there is no trivia to read; simply return what we currently have.
@@ -625,7 +625,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
         Context.Assert(_readPosition > beginLocation.Offset, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadNextPPToken)} failed to consume any non-trivia characters from the source text and did not return an EOF token.");
         Context.Assert(tokenKind != TokenKind.Invalid, Source, beginLocation, $"{nameof(Lexer)}::{nameof(ReadNextPPToken)} failed to assign a non-invalid kind to the read token.");
 
-        var trailingTrivia = ReadTrivia(isLeading: false);
+        var trailingTrivia = tokenKind == TokenKind.CPPDirectiveEnd ? TriviaList.EmptyTrailing : ReadTrivia(isLeading: false);
 
         if (tokenLanguage == SourceLanguage.Laye && tokenKind == TokenKind.Identifier)
         {

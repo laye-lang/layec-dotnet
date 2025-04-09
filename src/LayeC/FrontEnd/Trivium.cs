@@ -2,9 +2,10 @@
 
 namespace LayeC.FrontEnd;
 
-public abstract class Trivium(SourceRange range, string debugName)
+public abstract class Trivium(SourceText source, SourceRange range, string debugName)
     : ITreeDebugNode
 {
+    public SourceText Source { get; } = source;
     public SourceRange Range { get; } = range;
     public SourceLocation Location => Range.Begin;
 
@@ -25,11 +26,17 @@ public sealed class TriviaList(IEnumerable<Trivium> trivia, bool isLeading)
     public SourceLocation Location => Trivia.Count == 0 ? default : Trivia[0].Location;
 
     string ITreeDebugNode.DebugNodeName { get; } = nameof(TriviaList);
-    IEnumerable<ITreeDebugNode> ITreeDebugNode.Children { get; } = trivia;
+    IEnumerable<ITreeDebugNode> ITreeDebugNode.Children { get; } = [.. trivia];
 }
 
-public sealed class TriviumShebangComment(SourceRange range) : Trivium(range, nameof(TriviumShebangComment));
-public sealed class TriviumWhiteSpace(SourceRange range) : Trivium(range, nameof(TriviumWhiteSpace));
-public sealed class TriviumNewLine(SourceRange range) : Trivium(range, nameof(TriviumNewLine));
-public sealed class TriviumLineComment(SourceRange range) : Trivium(range, nameof(TriviumLineComment));
-public sealed class TriviumDelimitedComment(SourceRange range) : Trivium(range, nameof(TriviumDelimitedComment));
+public sealed class TriviumLiteral(StringView literal)
+    : Trivium(SourceText.Unknown, default, nameof(TriviumLiteral))
+{
+    public StringView Literal { get; } = literal;
+}
+
+public sealed class TriviumShebangComment(SourceText source, SourceRange range) : Trivium(source, range, nameof(TriviumShebangComment));
+public sealed class TriviumWhiteSpace(SourceText source, SourceRange range) : Trivium(source, range, nameof(TriviumWhiteSpace));
+public sealed class TriviumNewLine(SourceText source, SourceRange range) : Trivium(source, range, nameof(TriviumNewLine));
+public sealed class TriviumLineComment(SourceText source, SourceRange range) : Trivium(source, range, nameof(TriviumLineComment));
+public sealed class TriviumDelimitedComment(SourceText source, SourceRange range) : Trivium(source, range, nameof(TriviumDelimitedComment));

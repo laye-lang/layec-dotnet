@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Linq;
 
 using LayeC.Source;
 
@@ -114,17 +115,21 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             new Token(TokenKind.KWPragma, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {
                 Spelling = "pragma",
+                LeadingTrivia = layeSourceToken.LeadingTrivia,
+                TrailingTrivia = new([new TriviumLiteral(" ")], false),
                 IsAtStartOfLine = true,
             },
             new Token(TokenKind.LiteralString, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {
                 Spelling = "\"C\"",
                 StringValue = "C",
+                TrailingTrivia = new([new TriviumLiteral(" ")], false),
                 HasWhiteSpaceBefore = true,
             },
             new Token(TokenKind.OpenCurly, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {
                 Spelling = "{",
+                TrailingTrivia = new([new TriviumLiteral("\n")], false),
                 HasWhiteSpaceBefore = true,
             }
         ];
@@ -134,6 +139,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             {
                 Spelling = "}",
                 IsAtStartOfLine = true,
+                TrailingTrivia = new([new TriviumLiteral("\n")], false),
                 HasWhiteSpaceBefore = true,
             }
         ];
@@ -320,7 +326,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 Context.ErrorExpectedPreprocessorDirective(directiveToken.Source, directiveToken.Location);
                 SkipRemainingDirectiveTokens();
             }
-            else HandleDirective(language, directiveToken);
+            else HandleDirective(language, ppToken, directiveToken);
         }
 
         Token? HandlePragmaC(bool expressionOnly, Lexer lexer, Token pragmaToken, Token cStringToken)
@@ -484,6 +490,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     {
                         Spelling = "pragma",
                         LeadingTrivia = expansion.SourceToken.LeadingTrivia,
+                        TrailingTrivia = new([new TriviumLiteral(" ")], false),
                         IsAtStartOfLine = isAtStartOfLine,
                         HasWhiteSpaceBefore = hasWhitespaceBefore,
                     },
@@ -491,11 +498,13 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     {
                         Spelling = "\"C\"",
                         StringValue = "C",
+                        TrailingTrivia = new([new TriviumLiteral(" ")], false),
                         HasWhiteSpaceBefore = true,
                     },
                     new Token(TokenKind.OpenParen, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
                     {
                         Spelling = "(",
+                        TrailingTrivia = new([new TriviumLiteral(" ")], false),
                         HasWhiteSpaceBefore = true,
                     }
                 ];
@@ -508,6 +517,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         HasWhiteSpaceBefore = true,
                     }
                 ];
+
+                expansion.Expansion[^1].TrailingTrivia = new(expansion.Expansion[^1].TrailingTrivia.Trivia.Concat([new TriviumLiteral(" ")]), false);
 
                 var leadingTokenStream = new BufferTokenStream(leadingTokens, expansion.MacroDefinition);
                 var trailingTokenStream = new BufferTokenStream(trailingTokens, expansion.MacroDefinition);
@@ -559,15 +570,15 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         return hasSkippedAnyTokens;
     }
 
-    private void HandleDirective(SourceLanguage language, Token directiveToken)
+    private void HandleDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
     {
         Context.Assert(directiveToken.Kind is (TokenKind.CPPIdentifier or TokenKind.Identifier), "Can only handle identifier directives.");
 
         var directiveName = directiveToken.StringValue;
         if (directiveName == "define")
-            HandleDefineDirective(directiveToken);
+            HandleDefineDirective(preprocessorToken, directiveToken);
         else if (directiveName == "include")
-            HandleIncludeDirective(language, directiveToken);
+            HandleIncludeDirective(language, preprocessorToken, directiveToken);
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
@@ -586,7 +597,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         public bool RequiresPasting { get; set; }
     }
 
-    private void HandleDefineDirective(Token directiveToken)
+    private void HandleDefineDirective(Token preprocessorToken, Token directiveToken)
     {
         var macroNameToken = ReadTokenRaw();
         if (macroNameToken.Kind != TokenKind.CPPIdentifier)
@@ -684,7 +695,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         };
     }
 
-    private void HandleIncludeDirective(SourceLanguage language, Token directiveToken)
+    private void HandleIncludeDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
     {
         var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
 
@@ -715,7 +726,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         if (language == SourceLanguage.C)
             AddCIncludeLexerFromC(includeSource);
-        else AddCIncludeLexerFromLaye(includeSource, directiveToken);
+        else AddCIncludeLexerFromLaye(includeSource, preprocessorToken);
     }
 
     private void DefineDirectiveCheckHash(ParsedMacroData macroData, int tokenIndex)

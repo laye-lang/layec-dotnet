@@ -64,5 +64,13 @@ public sealed class SyntaxDebugTreePrinter(bool useColor)
 
     private void PrintTrivium(Trivium trivium)
     {
+        SetColor(ColorMisc);
+        Console.Write(' ');
+        switch (trivium)
+        {
+            case TriviumShebangComment: Console.Write(trivium.Source.Substring(trivium.Range)); break;
+            case TriviumLineComment: Console.Write(trivium.Source.Substring(trivium.Range)); break;
+            //case TriviumDelimitedComment: if (_includeComments) _writer.Write(source.Substring(trivium.Range)); break;
+        }
     }
 }

@@ -27,12 +27,12 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
     public bool IsAtEndOfLine => TrailingTrivia.Trivia.Any(t => t is TriviumNewLine or TriviumLineComment);
     public bool HasWhiteSpaceBefore { get; set; }
 
-    public TriviaList LeadingTrivia { get; init; } = TriviaList.EmptyLeading;
-    public TriviaList TrailingTrivia { get; init; } = TriviaList.EmptyTrailing;
+    public TriviaList LeadingTrivia { get; set; } = TriviaList.EmptyLeading;
+    public TriviaList TrailingTrivia { get; set; } = TriviaList.EmptyTrailing;
 
-    public StringView StringValue { get; init; }
-    public BigInteger IntegerValue { get; init; }
-    public double FloatValue { get; init; }
+    public StringView StringValue { get; set; }
+    public BigInteger IntegerValue { get; set; }
+    public double FloatValue { get; set; }
 
     public bool DisableExpansion { get; set; }
 

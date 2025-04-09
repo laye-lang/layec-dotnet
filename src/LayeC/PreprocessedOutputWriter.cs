@@ -1,10 +1,12 @@
 ﻿using LayeC.FrontEnd;
+using LayeC.Source;
 
 namespace LayeC;
 
-public sealed class PreprocessedOutputWriter(TextWriter writer)
+public sealed class PreprocessedOutputWriter(TextWriter writer, bool includeComments = false)
 {
     private readonly TextWriter _writer = writer;
+    private readonly bool _includeComments = includeComments;
 
     private bool _first = true;
 
@@ -16,19 +18,34 @@ public sealed class PreprocessedOutputWriter(TextWriter writer)
 
     public void WriteToken(Token token)
     {
-        if (_first)
-            _first = false;
-        else if (token.IsAtStartOfLine || token.Kind == TokenKind.EndOfFile)
-            _writer.WriteLine();
-        else if (token.HasWhiteSpaceBefore)
-            _writer.Write(' ');
+        TryPrintTrivia(token.LeadingTrivia);
 
+        _first = false;
         if (token.Kind == TokenKind.EndOfFile)
             return;
 
         if (token.Kind is TokenKind.LiteralString or TokenKind.LiteralCharacter)
             WriteEscapedText(token);
         else _writer.Write(Preprocessor.StringizeToken(token, false));
+
+        TryPrintTrivia(token.TrailingTrivia);
+    }
+
+    private void TryPrintTrivia(TriviaList trivia)
+    {
+        foreach (var trivium in trivia.Trivia)
+        {
+            var source = trivium.Source;
+            switch (trivium)
+            {
+                case TriviumLiteral l: _writer.Write((string)l.Literal); break;
+                case TriviumShebangComment: _writer.Write(source.Substring(trivium.Range)); break;
+                case TriviumWhiteSpace: _writer.Write(source.Substring(trivium.Range)); break;
+                case TriviumNewLine: _writer.WriteLine(); break;
+                case TriviumLineComment: if (_includeComments) _writer.Write(source.Substring(trivium.Range)); break;
+                case TriviumDelimitedComment: if (_includeComments) _writer.Write(source.Substring(trivium.Range)); break;
+            }
+        }
     }
 
     private void WriteEscapedText(Token token)
