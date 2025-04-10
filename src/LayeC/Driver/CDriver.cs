@@ -8,7 +8,7 @@ public sealed class CDriver
 {
     public static int RunWithArgs(DiagnosticConsumerProvider diagProvider, string[] args, string programName = "dncc")
     {
-        using var parserDiag = diagProvider(true);
+        using var parserDiag = diagProvider(ToolingOptions.OutputColoring != Trilean.False);
         using var diag = new DiagnosticEngine(parserDiag);
         using var driver = Create(diagProvider, CDriverOptions.Parse(diag, new CliArgumentIterator(args)), programName);
         return driver.Execute();

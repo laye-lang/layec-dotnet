@@ -4,7 +4,7 @@ namespace LayeC.Driver;
 
 public record class BaseCompilerDriverParseState
 {
-    public OutputColoring OutputColoring { get; set; } = OutputColoring.Auto;
+    public Trilean OutputColoring { get; set; } = Trilean.Unknown;
 }
 
 public abstract class BaseCompilerDriverOptions<TSelf, TParseState>
@@ -35,6 +35,20 @@ public abstract class BaseCompilerDriverOptions<TSelf, TParseState>
     /// </summary>
     public bool OutputColoring { get; set; }
 
+    protected virtual void Validate(DiagnosticEngine diag, TParseState state)
+    {
+    }
+
+    protected virtual void Finalize(DiagnosticEngine diag, TParseState state)
+    {
+        Trilean outputColoring = state.OutputColoring & ToolingOptions.OutputColoring;
+
+        if (outputColoring == Trilean.Unknown)
+            outputColoring = (Console.IsOutputRedirected || Console.IsErrorRedirected) ? Trilean.False : Trilean.True;
+
+        OutputColoring = outputColoring == Trilean.True;
+    }
+
     protected virtual void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, TParseState state)
     {
         diag.Emit(DiagnosticLevel.Fatal, $"Unhandled positional argument '{value}'. The compiler driver option parsers should always handle these themselves. {GetType().Name} did not.");
@@ -62,9 +76,9 @@ public abstract class BaseCompilerDriverOptions<TSelf, TParseState>
                     switch (color.ToLower())
                     {
                         default: diag.Emit(DiagnosticLevel.Error, $"Color mode '{color}' not recognized."); break;
-                        case "auto": state.OutputColoring = Driver.OutputColoring.Auto; break;
-                        case "always": state.OutputColoring = Driver.OutputColoring.Always; break;
-                        case "never": state.OutputColoring = Driver.OutputColoring.Never; break;
+                        case "auto": state.OutputColoring = Trilean.Unknown; break;
+                        case "always": state.OutputColoring = Trilean.True; break;
+                        case "never": state.OutputColoring = Trilean.False; break;
                     }
                 }
             } break;
@@ -83,9 +97,8 @@ public abstract class BaseCompilerDriverOptions<TSelf, TParseState>
             else options.HandleValue(arg, diag, args, state);
         }
 
-        if (state.OutputColoring == Driver.OutputColoring.Auto)
-            state.OutputColoring = (Console.IsOutputRedirected || Console.IsErrorRedirected) ? Driver.OutputColoring.Never : Driver.OutputColoring.Always;
-        options.OutputColoring = state.OutputColoring == Driver.OutputColoring.Always;
+        options.Validate(diag, state);
+        options.Finalize(diag, state);
 
         return options;
     }

@@ -1,6 +1,4 @@
-﻿using LayeC.Extensions;
-
-namespace LayeC;
+﻿namespace LayeC;
 
 public sealed class IncludePaths
 {

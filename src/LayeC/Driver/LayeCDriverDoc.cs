@@ -24,6 +24,14 @@ public sealed class LayeCDriverDocOptions
 {
     public string? FeatureName { get; set; }
 
+    protected override void Validate(DiagnosticEngine diag, BaseCompilerDriverParseState state)
+    {
+        base.Validate(diag, state);
+
+        if (FeatureName is null)
+            diag.Emit(DiagnosticLevel.Error, "Exactly one feature name is expected.");
+    }
+
     protected override void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, BaseCompilerDriverParseState state)
     {
         if (FeatureName is not null)

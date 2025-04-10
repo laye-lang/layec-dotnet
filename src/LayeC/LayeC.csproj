@@ -24,7 +24,7 @@
 		<SelfContained>true</SelfContained>
 	</PropertyGroup>
 	<ItemGroup>
-	  <Folder Include="Driver\Docs\" />
+	  <Folder Include="Docs\" />
 	</ItemGroup>
 
 	<!--

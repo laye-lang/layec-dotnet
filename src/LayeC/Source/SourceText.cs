@@ -48,6 +48,27 @@ public sealed class SourceText(string name, string text)
         return new(1 + lineIndex, 1 + location.Offset - lineStart, lineStart, lineLength, Text.AsMemory(lineStart..(lineStart + lineLength)));
     }
 
+    public SourceLocationInfo[] GetLineInfos()
+    {
+        EnsureLineStartOffsetsCalculated();
+        Debug.Assert(_lineStartOffsets is not null);
+
+        var lineInfos = new SourceLocationInfo[_lineStartOffsets.Length];
+        for (int lineIndex = 0; lineIndex < _lineStartOffsets.Length; lineIndex++)
+        {
+            int lineStart = _lineStartOffsets[lineIndex];
+            int nextLineStart = lineIndex + 1 < _lineStartOffsets.Length ? _lineStartOffsets[lineIndex + 1] : Text.Length;
+            int lineLength = nextLineStart - lineStart;
+
+            while (lineLength > 0 && Text[lineStart + lineLength - 1] is '\n' or '\r')
+                lineLength--;
+
+            lineInfos[lineIndex] = new SourceLocationInfo(1 + lineIndex, 1, lineStart, lineLength, Text.AsMemory(lineStart..(lineStart + lineLength)));
+        }
+
+        return lineInfos;
+    }
+
     private void EnsureLineStartOffsetsCalculated()
     {
         if (_lineStartOffsets is not null)

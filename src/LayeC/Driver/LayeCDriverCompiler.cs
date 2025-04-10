@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 using LayeC.Diagnostics;
 using LayeC.FrontEnd;
@@ -113,27 +114,34 @@ Options:
             return PreprocessOnly();
 
         Context.Diag.Emit(DiagnosticLevel.Warning, "The full compilation pipeline is not yet implemented. Stopping early.");
-        Context.Diag.Emit(DiagnosticLevel.Note, "You can use options such as '--preprocess', '--parse' etc. to explicitly stop at an earlier stage.");
+        Context.Diag.Emit(DiagnosticLevel.Note, "You can use options such as '-E', '--parse' etc. to explicitly stop at an earlier stage.");
         Context.Diag.Emit(DiagnosticLevel.Note, $"See '{ProgramName} --help' for information on the available options.");
         return 0;
+
+        bool OpenOutputStream([NotNullWhen(true)] out Stream? stream)
+        {
+            Context.Assert(Options.OutputFile is not null or "-", "Can only open output file stream when a file path is present and not '-'.");
+            try
+            {
+                stream = File.OpenWrite(Options.OutputFile);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                stream = null;
+                Context.Diag.Emit(DiagnosticLevel.Error, $"Could not open output file '{Options.OutputFile}': {ex.Message}.");
+                return false;
+            }
+        }
 
         int PreprocessOnly()
         {
             TextWriter outputWriter;
             if (Options.OutputFile is null or "-")
                 outputWriter = Console.Out;
-            else
-            {
-                try
-                {
-                    outputWriter = new StreamWriter(File.OpenWrite(Options.OutputFile));
-                }
-                catch (Exception ex)
-                {
-                    Context.Diag.Emit(DiagnosticLevel.Error, $"Could not open output file '{Options.OutputFile}': {ex.Message}.");
-                    return 1;
-                }
-            }
+            else if (OpenOutputStream(out var outputStream))
+                outputWriter = new StreamWriter(outputStream);
+            else return 1;
 
             var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
             var ppOutputWriter = new PreprocessedOutputWriter(outputWriter, Options.IncludeCommentsInPreprocessedOutput);
@@ -171,6 +179,16 @@ public sealed class LayeCDriverCompilerOptions
 
     public bool PrintTokens { get; set; }
     public bool IncludeCommentsInPreprocessedOutput { get; set; }
+
+    protected override void Validate(DiagnosticEngine diag, BaseCompilerDriverParseState state)
+    {
+        base.Validate(diag, state);
+    }
+
+    protected override void Finalize(DiagnosticEngine diag, BaseCompilerDriverParseState state)
+    {
+        base.Finalize(diag, state);
+    }
 
     protected override void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, BaseCompilerDriverParseState state)
     {

@@ -11,7 +11,7 @@ public sealed class LayeCDriver
 
         CompilerDriver? CreateDriver()
         {
-            using var parserDiag = diagProvider(true);
+            using var parserDiag = diagProvider(ToolingOptions.OutputColoring != Trilean.False);
             using var diag = new DiagnosticEngine(parserDiag);
 
             CompilerDriver driver = args switch

@@ -31,6 +31,8 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
 
     public static explicit operator string(StringView sv) => sv.ToString();
 
+    public static readonly StringView Empty = new(Array.Empty<char>().AsMemory(), 0);
+
     public readonly ReadOnlyMemory<char> Memory = memory;
     public readonly int HashCode = hashCode;
 
@@ -62,6 +64,21 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
             yield return Memory.Span[i];
     }
 
+    public bool IsEmpty() => Length == 0;
+    public bool IsWhiteSpace()
+    {
+        for (int i = 0; i < Length; i++)
+        {
+            if (!char.IsWhiteSpace(Span[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    public int IndexOf(char c) => Span.IndexOf(c);
+
+    public bool StartsWith(char c) => Length > 0 && Span[0] == c;
     public bool StartsWith(string s) => StartsWith(s.AsSpan());
     public bool StartsWith(ReadOnlyMemory<char> m) => StartsWith(m.Span);
     public bool StartsWith(StringView s) => StartsWith(s.Span);
@@ -78,6 +95,7 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
         return true;
     }
 
+    public bool EndsWith(char c) => Length > 0 && Span[^1] == c;
     public bool EndsWith(string s) => EndsWith(s.AsSpan());
     public bool EndsWith(ReadOnlyMemory<char> m) => EndsWith(m.Span);
     public bool EndsWith(StringView s) => EndsWith(s.Span);
@@ -93,5 +111,41 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
         }
 
         return true;
+    }
+
+    public StringView Trim() => TrimStart().TrimEnd();
+
+    public StringView TrimStart()
+    {
+        if (Length == 0)
+            return Empty;
+
+        if (!char.IsWhiteSpace(Span[0]))
+            return this;
+
+        for (int i = 1; i < Length; i++)
+        {
+            if (!char.IsWhiteSpace(Span[i]))
+                return this[i..Length];
+        }
+
+        return Empty;
+    }
+
+    public StringView TrimEnd()
+    {
+        if (Length == 0)
+            return Empty;
+
+        if (!char.IsWhiteSpace(Span[^1]))
+            return this;
+
+        for (int i = Length - 1; i >= 0; i--)
+        {
+            if (!char.IsWhiteSpace(Span[i]))
+                return this[0..(i + 1)];
+        }
+
+        return Empty;
     }
 }

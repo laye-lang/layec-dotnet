@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text;
 
+using LayeC.Driver;
 using LayeC.Formatting;
 using LayeC.Source;
 
@@ -36,21 +37,18 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
         _ => White,
     };
 
-    private static string GetColorEscapeForMarkupColor(MarkupColor color)
+    private static string GetColorEscapeForMarkupColor(MarkupColor color) => color switch
     {
-        switch (color)
-        {
-            default: return White;
-            case MarkupColor.Black: return Grey;
-            case MarkupColor.Red: return Red;
-            case MarkupColor.Green: return Green;
-            case MarkupColor.Yellow: return Yellow;
-            case MarkupColor.Blue: return Blue;
-            case MarkupColor.Magenta: return Magenta;
-            case MarkupColor.Cyan: return Cyan;
-            case MarkupColor.White: return White;
-        }
-    }
+        MarkupColor.Black => Grey,
+        MarkupColor.Red => Red,
+        MarkupColor.Green => Green,
+        MarkupColor.Yellow => Yellow,
+        MarkupColor.Blue => Blue,
+        MarkupColor.Magenta => Magenta,
+        MarkupColor.Cyan => Cyan,
+        MarkupColor.White => White,
+        _ => White,
+    };
 
     private static string GetStyleEscapeForMarkupStyle(MarkupStyle style)
     {
@@ -64,50 +62,45 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
 
         return result;
 
-        static string Impl(MarkupStyle style)
+        static string Impl(MarkupStyle style) => style switch
         {
-            switch (style)
-            {
-                default: return Normal;
-                case MarkupStyle.Bold: return Bold;
-                case MarkupStyle.Italic: return Italic;
-                case MarkupStyle.Underline: return Underline;
-                case MarkupStyle.Monospace: return Normal;
-            }
-        }
+            MarkupStyle.Bold => Bold,
+            MarkupStyle.Italic => Italic,
+            MarkupStyle.Underline => Underline,
+            MarkupStyle.Monospace => Normal,
+            MarkupStyle.None => Normal,
+            _ => Normal,
+        };
     }
 
-    private static string GetColorEscapeForMarkupSemantic(MarkupSemantic semantic)
+    private static string GetColorEscapeForMarkupSemantic(MarkupSemantic semantic) => semantic switch
     {
-        switch (semantic)
-        {
-            default: return White;
-            case MarkupSemantic.Entity: return White;
-            case MarkupSemantic.EntityParameter: return White;
-            case MarkupSemantic.EntityLocal: return White;
-            case MarkupSemantic.EntityGlobal: return White;
-            case MarkupSemantic.EntityMember: return White;
-            case MarkupSemantic.EntityFunction: return White;
-            case MarkupSemantic.EntityType: return White;
-            case MarkupSemantic.EntityTypeValue: return White;
-            case MarkupSemantic.EntityTypeStruct: return White;
-            case MarkupSemantic.EntityTypeEnum: return White;
-            case MarkupSemantic.EntityNamespace: return White;
-            case MarkupSemantic.Keyword: return Blue;
-            case MarkupSemantic.KeywordControlFlow: return Blue;
-            case MarkupSemantic.KeywordOperator: return Blue;
-            case MarkupSemantic.KeywordType: return Blue;
-            case MarkupSemantic.KeywordQualifier: return Blue;
-            case MarkupSemantic.Literal: return Yellow;
-            case MarkupSemantic.LiteralNumber: return Yellow;
-            case MarkupSemantic.LiteralString: return Yellow;
-            case MarkupSemantic.LiteralInvalid: return Red;
-            case MarkupSemantic.LiteralKeyword: return Blue;
-            case MarkupSemantic.Punctuation: return Grey;
-            case MarkupSemantic.PunctuationDelimiter: return Grey;
-            case MarkupSemantic.PunctuationOperator: return Grey;
-        }
-    }
+        MarkupSemantic.Entity => White,
+        MarkupSemantic.EntityParameter => White,
+        MarkupSemantic.EntityLocal => White,
+        MarkupSemantic.EntityGlobal => White,
+        MarkupSemantic.EntityMember => White,
+        MarkupSemantic.EntityFunction => White,
+        MarkupSemantic.EntityType => White,
+        MarkupSemantic.EntityTypeValue => White,
+        MarkupSemantic.EntityTypeStruct => White,
+        MarkupSemantic.EntityTypeEnum => White,
+        MarkupSemantic.EntityNamespace => White,
+        MarkupSemantic.Keyword => Blue,
+        MarkupSemantic.KeywordControlFlow => Blue,
+        MarkupSemantic.KeywordOperator => Blue,
+        MarkupSemantic.KeywordType => Blue,
+        MarkupSemantic.KeywordQualifier => Blue,
+        MarkupSemantic.Literal => Yellow,
+        MarkupSemantic.LiteralNumber => Yellow,
+        MarkupSemantic.LiteralString => Yellow,
+        MarkupSemantic.LiteralInvalid => Red,
+        MarkupSemantic.LiteralKeyword => Blue,
+        MarkupSemantic.Punctuation => Grey,
+        MarkupSemantic.PunctuationDelimiter => Grey,
+        MarkupSemantic.PunctuationOperator => Grey,
+        _ => White,
+    };
 
     public TextWriter Writer { get; } = writer;
     public bool UseColor { get; } = useColor;
@@ -148,7 +141,6 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
         Writer.Write(groupText);
     }
 
-#pragma warning disable IDE0060 // Remove unused parameter
     private void ResetColor(StringBuilder builder)
     {
         if (!UseColor) return;
@@ -166,7 +158,6 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
         if (!UseColor) return;
         builder.Append(GetColorEscapeForMarkupColor(color));
     }
-#pragma warning restore IDE0060 // Remove unused parameter
 
     private string RenderDiagnosticGroup(Diagnostic[] group, int displayWidth)
     {
@@ -328,12 +319,11 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
             groupBuilder.Append('╯');
         }
 
+        groupBuilder.AppendLine();
         return groupBuilder.ToString();
     }
 
-#pragma warning disable CS9113 // Parameter is unread.
     private sealed class FormattedDiagnosticMessageMarkupRenderer(bool useColor)
-#pragma warning restore CS9113 // Parameter is unread.
     {
         private readonly Stack<string> _colorEscapes = [];
         private readonly Stack<string> _styleEscapes = [];
@@ -385,9 +375,9 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
                     if (useColor)
                     {
                         builder.Append(Reset);
-#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
                         foreach (string style in _styleEscapes)
                             builder.Append(style);
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
 
                         if (_colorEscapes.TryPeek(out string previousColor))
                             builder.Append(previousColor);
