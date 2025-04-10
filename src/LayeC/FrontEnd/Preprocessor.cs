@@ -486,7 +486,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         else if (newToken is { Kind: TokenKind.EndOfFile } || proxyContext.Diag.HasEmittedErrors)
                             Context.ErrorConcatenationFormedInvalidToken(hashHashToken.Source, hashHashToken.Location, source.Text);
 
-                        expansion.Expansion.Add(newToken);
+                        // we should probably avoid adding stray EOFs
+                        if (newToken.Kind != TokenKind.EndOfFile)
+                            expansion.Expansion.Add(newToken);
                     } else expansion.Expansion.Add(token);
                 }
             }
