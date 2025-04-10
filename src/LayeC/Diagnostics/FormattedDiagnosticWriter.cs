@@ -6,7 +6,7 @@ using LayeC.Source;
 
 namespace LayeC.Diagnostics;
 
-public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, bool useByteLocations = true)
+public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
     : IDiagnosticConsumer
 {
     private const string Reset = "\x1b[0m";
@@ -21,10 +21,20 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
     private const string Blue = "\x1b[94m";
     private const string Magenta = "\x1b[95m";
     private const string Cyan = "\x1b[96m";
-    private const string Grey = "\x1b[97m";
+    private const string Grey = "\x1b[90m";
     private const string White = "\x1b[1m\x1b[97m";
 
     public const int MinRenderWidth = 8;
+
+    private static string GetColorForDiagnosticLevel(DiagnosticLevel level) => level switch
+    {
+        DiagnosticLevel.Note => Green,
+        DiagnosticLevel.Remark => Yellow,
+        DiagnosticLevel.Warning => Magenta,
+        DiagnosticLevel.Error => Red,
+        DiagnosticLevel.Fatal => Cyan,
+        _ => White,
+    };
 
     private static string GetColorEscapeForMarkupColor(MarkupColor color)
     {
@@ -101,7 +111,9 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
 
     public TextWriter Writer { get; } = writer;
     public bool UseColor { get; } = useColor;
-    public bool UseByteLocations { get; } = useByteLocations;
+
+    public bool UseByteLocations { get; } = true;
+    public bool RenderMultipleSourceLines { get; } = false;
 
     private readonly List<Diagnostic> _diagnosticGroup = new(10);
 
@@ -141,6 +153,12 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
     {
         if (!UseColor) return;
         builder.Append(Reset);
+    }
+
+    private void WriteColor(StringBuilder builder, DiagnosticLevel level)
+    {
+        if (!UseColor) return;
+        builder.Append(GetColorForDiagnosticLevel(level));
     }
 
     private void WriteColor(StringBuilder builder, MarkupColor color)
@@ -187,22 +205,10 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
             for (int i = 0; i < wellInnerLeftPadding - 1; i++)
                 groupBuilder.Append('─');
 
-            var levelColor = diag.Level switch
-            {
-                DiagnosticLevel.Note => MarkupColor.Green,
-                DiagnosticLevel.Remark => MarkupColor.Yellow,
-                DiagnosticLevel.Warning => MarkupColor.Magenta,
-                DiagnosticLevel.Error => MarkupColor.Red,
-                DiagnosticLevel.Fatal => MarkupColor.Cyan,
-                _ => MarkupColor.White,
-            };
-
             groupBuilder.Append('[');
-            if (UseColor)
-                groupBuilder.Append(GetColorEscapeForMarkupColor(levelColor));
+            WriteColor(groupBuilder, diag.Level);
             groupBuilder.Append(diag.Level);
-            if (UseColor)
-                groupBuilder.Append(Reset);
+            ResetColor(groupBuilder);
             groupBuilder.Append(']');
 
             if (diag.Source is not null)
@@ -246,18 +252,21 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
                 var lineInfo = diag.Source.Seek(diag.Location);
                 SourceLocationInfo? prevInfo = null, nextInfo = null;
 
-                if (lineInfo.LineStart > 0)
+                if (RenderMultipleSourceLines)
                 {
-                    prevInfo = diag.Source.Seek(lineInfo.LineStart - 1);
-                    if (prevInfo.Value.LineLength == 0 || prevInfo.Value.LineText.All(char.IsWhiteSpace))
-                        prevInfo = null;
-                }
+                    if (lineInfo.LineStart > 0)
+                    {
+                        prevInfo = diag.Source.Seek(lineInfo.LineStart - 1);
+                        if (prevInfo.Value.LineLength == 0 || prevInfo.Value.LineText.All(char.IsWhiteSpace))
+                            prevInfo = null;
+                    }
 
-                if (lineInfo.LineStart + lineInfo.LineLength < diag.Source.Length)
-                {
-                    nextInfo = diag.Source.Seek(lineInfo.LineStart + lineInfo.LineLength + 1);
-                    if (nextInfo.Value.LineLength == 0 || nextInfo.Value.LineText.All(char.IsWhiteSpace))
-                        nextInfo = null;
+                    if (lineInfo.LineStart + lineInfo.LineLength < diag.Source.Length)
+                    {
+                        nextInfo = diag.Source.Seek(lineInfo.LineStart + lineInfo.LineLength + 1);
+                        if (nextInfo.Value.LineLength == 0 || nextInfo.Value.LineText.All(char.IsWhiteSpace))
+                            nextInfo = null;
+                    }
                 }
 
                 int sharedLeadingSpace = 0;
@@ -265,7 +274,7 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
                 if (prevInfo is not null)
                     RenderLine(prevInfo.Value);
 
-                RenderLine(lineInfo);
+                RenderLine(lineInfo, true);
 
                 if (gi == group.Length - 1 && nextInfo is null)
                 {
@@ -285,12 +294,14 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
 
                 for (int i = 0; i < lineInfo.Column - 1; i++)
                     groupBuilder.Append(' ');
+                WriteColor(groupBuilder, diag.Level);
                 groupBuilder.AppendLine("^");
+                ResetColor(groupBuilder);
 
                 if (nextInfo is not null)
                     RenderLine(nextInfo.Value);
 
-                void RenderLine(SourceLocationInfo info)
+                void RenderLine(SourceLocationInfo info, bool isPrimary = false)
                 {
                     int lineNumberWidth = 1 + (int)Math.Log10(info.Line);
                     groupBuilder.Append('│');
@@ -298,7 +309,12 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, 
                         groupBuilder.Append(' ');
                     groupBuilder.Append(info.Line);
                     groupBuilder.Append(" │ ");
+
+                    if (!isPrimary)
+                        WriteColor(groupBuilder, MarkupColor.Black);
                     groupBuilder.AppendLine((string)info.LineText[sharedLeadingSpace..Math.Min(sharedLeadingSpace + 120, info.LineLength)]);
+                    if (!isPrimary)
+                        ResetColor(groupBuilder);
                 }
             }
         }
