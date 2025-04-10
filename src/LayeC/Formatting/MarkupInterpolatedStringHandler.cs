@@ -24,6 +24,8 @@ public readonly struct MarkupInterpolatedStringHandler
         switch (t)
         {
             default: AppendLiteral(t?.ToString() ?? ""); break;
+            case string literal: AppendLiteral(literal); break;
+            case Markup markup: _builder.Append(markup); break;
             case IMarkupFormattable formattable: formattable.BuildMarkup(_builder); break;
         }
     }

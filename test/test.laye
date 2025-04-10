@@ -1,6 +1,1 @@
-void main() {
-    // option 1
-    pragma "C" ( SetBackgroundColorImpl_(((Color){(10), (20), (30)})) );
-    // option 2
-    pragma "C-delayed-macro" [C] { SetBackgroundColorImpl_(C) } (Color { 10, 20, 30 });
-}
+pragma include "foo.h"

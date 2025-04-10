@@ -1,7 +1,7 @@
 ﻿using System.Text;
 
 using LayeC.Diagnostics;
-using LayeC.FrontEnd;
+using LayeC.Driver;
 
 namespace LayeC;
 
@@ -14,12 +14,13 @@ public static class Program
 
         static IDiagnosticConsumer DiagProvider(bool useColor) => new FormattedDiagnosticWriter(Console.Out, useColor);
 
+        string programName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "dnlayec");
         if (args is ["-cc1", ..])
         {
             args = args[1..];
-            return CDriver.RunWithArgs(DiagProvider, args, "layec -cc1");
+            return CDriver.RunWithArgs(DiagProvider, args, $"{programName} -cc1");
         }
 
-        return LayeDriver.RunWithArgs(DiagProvider, args);
+        return LayeCDriver.RunWithArgs(DiagProvider, args, programName);
     }
 }

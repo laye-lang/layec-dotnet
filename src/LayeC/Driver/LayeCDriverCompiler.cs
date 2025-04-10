@@ -1,22 +1,164 @@
 ﻿using System.Diagnostics;
 
 using LayeC.Diagnostics;
-using LayeC.Driver;
+using LayeC.FrontEnd;
+using LayeC.Source;
 
-namespace LayeC.FrontEnd;
+namespace LayeC.Driver;
 
-public enum LayeCompilerCommand
+public sealed class LayeCDriverCompiler
+    : CompilerDriverWithContext
 {
-    Compile,
-    Run,
-    Format,
-    LanguageServer,
+    public static LayeCDriverCompiler Create(DiagnosticConsumerProvider diagProvider, LayeCDriverCompilerOptions options, string programName = "dnlayec")
+    {
+        var context = new CompilerContext(diagProvider(options.OutputColoring), Target.X86_64)
+        {
+            IncludePaths = options.IncludePaths,
+        };
+
+        return new LayeCDriverCompiler(programName, context, options);
+    }
+
+    public LayeCDriverCompilerOptions Options { get; set; }
+
+    private LayeCDriverCompiler(string programName, CompilerContext context, LayeCDriverCompilerOptions options)
+        : base(programName, context)
+    {
+        Options = options;
+    }
+
+    public override int ShowHelp()
+    {
+        Console.Error.Write(
+            @$"Compiles a list of Laye source files of the same module into a module object file
+
+Usage: {ProgramName} [command] [options] file...
+
+Options:
+    --help                   Display this information.
+    --version                Display compiler version information.
+    --verbose                Emit additional information about the compilation to stderr.
+    --color <arg>            Specify how compiler output should be colored.
+                             one of: 'auto', 'always', 'never'
+
+    -i                       Read source text from stdin rather than a list of source files.
+    --file-kind <kind>, -x <kind>
+                             Specify the kind of subsequent input files, or 'default' to infer it from the extension.
+                             one of: 'default', 'laye', 'c', 'module'
+    -o <path>                Override the output module object file path.
+                             To emit output to stdout, specify a path of '-'.
+                             default: '<module-name>.mod'
+    --emit <flavor>, --emit=<flavor>
+                             Emit a specific ""flavor"" of assembler when compiling with '--compile'.
+                             When not provided, a default is chosen that seems suitable.
+                             Behaves the same as '-emit-<flavor>', which are provided to feel more
+                             familiar to GCC/Clang options.
+                             one of: 'gas', 'nasm', 'fasm', 'qbe', 'llvm'
+    -emit-gas                Emit GNU-flavored Assembler when compiling with '--compile'.
+    -emit-nasm               Emit NASM-flavored Assembler when compiling with '--compile'.
+    -emit-fasm               Emit FASM-flavored Assembler when compiling with '--compile'.
+    -emit-qbe                Emit QBE instead of Assembler when compiling with '--compile'.
+    -emit-llvm               Emit LLVM instead of Assembler when compiling with '--compile'.
+
+    --no-corelib             Do not link against the the default Laye core libraries.
+    --no-rt0                 Do not link against the the default Laye runtime/entry library.
+
+    -iquote <dir>            Adds <dir> to the end of the list of QUOTE include search paths.
+    -I <dir>, -I<dir>        Adds <dir> to the end of the list of include search paths.
+    -L <lib-dir>             Adds <dir> to the end of the list of library search paths.
+                             Directories are searched in the order they are provided, and values
+                             provided through the CLI are searched after built-in and environment-
+                             specified search paths.
+
+    --preprocess, -E         Only lex and preprocess the source files, then exit.
+                             Can be used with '--include-comments' to keep comments in the output.
+    --parse, -fsyntax-only   Only lex and parse the source files, then exit.
+                             For C source text, this also implies '--sema'.
+    --sema                   Only lex, parse and analyse the source files, then exit.
+    --codegen                Only lex, parse, analyse and generate code for the source files, then exit.
+    --compile, -S            Only lex, parse, analyse, generate and emit code for the source files, then exit.
+                             The result of this step is an assembler file.
+                             The format of assembler output can be controled with the '--emit-*' options.
+    --assemble, -c           Perform the entire compilation pipeline, resulting in an object file, then exit.
+
+    --tokens                 Print token information to stderr, implying '--preprocess'.
+    --include-comments       When running with '--preprocess', include comments in the output.
+                             Comments are otherwise stripped from preprocessed output by default.
+    --ast                    Print ASTs to stderr when, implying '--sema' unless '--parse' is provided.
+                             The difference is only present in Laye files, where parsing can happen without analysis.
+    --no-lower               Do not lower the AST during semantic analysis when used alongside '--sema'.
+                             Otherwise, this option has no effect as lowering is a required step to continue.
+    --ir                     Print IR to stderr, implying '--codegen'.
+"
+        );
+
+        return 0;
+    }
+
+    public override int Execute()
+    {
+        if (Options.ShowHelp)
+            return ShowHelp();
+
+        if (Options.InputFiles.Count == 0)
+        {
+            Context.Diag.Emit(DiagnosticLevel.Error, "No source files provided.");
+            return 1;
+        }
+
+        var languageOptions = new LanguageOptions();
+        languageOptions.SetDefaults(Context, Options.Standards);
+
+        if (Options.DriverStage == DriverStage.Preprocess)
+            return PreprocessOnly();
+
+        Context.Diag.Emit(DiagnosticLevel.Warning, "The full compilation pipeline is not yet implemented. Stopping early.");
+        Context.Diag.Emit(DiagnosticLevel.Note, "You can use options such as '--preprocess', '--parse' etc. to explicitly stop at an earlier stage.");
+        Context.Diag.Emit(DiagnosticLevel.Note, $"See '{ProgramName} --help' for information on the available options.");
+        return 0;
+
+        int PreprocessOnly()
+        {
+            TextWriter outputWriter;
+            if (Options.OutputFile is null or "-")
+                outputWriter = Console.Out;
+            else
+            {
+                try
+                {
+                    outputWriter = new StreamWriter(File.OpenWrite(Options.OutputFile));
+                }
+                catch (Exception ex)
+                {
+                    Context.Diag.Emit(DiagnosticLevel.Error, $"Could not open output file '{Options.OutputFile}': {ex.Message}.");
+                    return 1;
+                }
+            }
+
+            var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
+            var ppOutputWriter = new PreprocessedOutputWriter(outputWriter, Options.IncludeCommentsInPreprocessedOutput);
+
+            foreach (var (fileName, file) in Options.InputFiles)
+            {
+                var source = new SourceText(fileName, File.ReadAllText(file.FullName));
+                var sourceLanguage = file.Extension is ".c" or ".h" ? SourceLanguage.C : SourceLanguage.Laye;
+
+                var preprocessor = new Preprocessor(Context, languageOptions);
+                var tokens = preprocessor.PreprocessSource(source, sourceLanguage);
+
+                if (Options.PrintTokens)
+                    tokens.ForEach(debugPrinter.PrintToken);
+                else tokens.ForEach(ppOutputWriter.WriteToken);
+            }
+
+            return 0;
+        }
+    }
 }
 
-public sealed class LayeDriverOptions
-    : BaseCompilerDriverOptions<LayeDriverOptions, BaseCompilerDriverParseState>
+public sealed class LayeCDriverCompilerOptions
+    : LayeCSharedDriverOptions<LayeCDriverCompilerOptions>
 {
-    public LayeCompilerCommand Command { get; set; } = LayeCompilerCommand.Compile;
     public DriverStage DriverStage { get; set; } = DriverStage.Assemble;
     public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Default;
 
@@ -26,6 +168,9 @@ public sealed class LayeDriverOptions
     public LanguageStandardKinds Standards { get; set; }
 
     public IncludePaths IncludePaths { get; set; } = new();
+
+    public bool PrintTokens { get; set; }
+    public bool IncludeCommentsInPreprocessedOutput { get; set; }
 
     protected override void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, BaseCompilerDriverParseState state)
     {
@@ -41,10 +186,6 @@ public sealed class LayeDriverOptions
         switch (arg)
         {
             default: base.HandleArgument(arg, diag, args, state); break;
-
-            case "--run": Command = LayeCompilerCommand.Run; break;
-            case "--format": Command = LayeCompilerCommand.Format; break;
-            case "--lsp" or "--language-server": Command = LayeCompilerCommand.LanguageServer; break;
 
             case "--preprocess" or "-E": DriverStage = DriverStage.Preprocess; break;
             case "--parse" or "-fsyntax-only": DriverStage = DriverStage.Parse; break;
@@ -86,9 +227,9 @@ public sealed class LayeDriverOptions
                 else IncludePaths.AddSystemIncludePath(includePath);
             } break;
 
-            case string when arg.StartsWith("-I="):
+            case string when arg.StartsWith("-I"):
             {
-                string includePath = arg[3..];
+                string includePath = arg[2..];
                 if (string.IsNullOrWhiteSpace(includePath))
                     diag.Emit(DiagnosticLevel.Error, "Option '-I' requires an argument.");
                 else IncludePaths.AddSystemIncludePath(includePath);
@@ -108,6 +249,9 @@ public sealed class LayeDriverOptions
                     diag.Emit(DiagnosticLevel.Error, "Option '-iquote' requires an argument.");
                 else IncludePaths.AddSystemIncludePath(includePath);
             } break;
+
+            case "--tokens": DriverStage = DriverStage.Preprocess; PrintTokens = true; break;
+            case "--include-comments": IncludeCommentsInPreprocessedOutput = true; break;
         }
 
         void ParseCStd(string shortName)

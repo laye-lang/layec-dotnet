@@ -100,7 +100,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void PushTokenStream(ITokenStream tokenStream)
     {
-        MaterializedPeekedToken();
+        MaterializePeekedToken();
         _tokenStreams.Push(tokenStream);
     }
 
@@ -174,7 +174,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
     }
 
-    private void MaterializedPeekedToken()
+    private void MaterializePeekedToken()
     {
         var peeked = _peekedRawToken;
         _peekedRawToken = null;
@@ -378,6 +378,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                             break;
                         }
                     }
+                    else if (token.Kind == TokenKind.EndOfFile)
+                        break;
 
                     if (Preprocess(token) is { } preprocessedToken)
                         pragmaTokenBody.Add(preprocessedToken);
@@ -481,6 +483,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         void PrepareExpansion(MacroExpansion expansion, bool isAtStartOfLine, bool hasWhitespaceBefore)
         {
             if (expansion.Expansion.Count == 0) return;
+
+            expansion.MacroDefinition.IsExpanding = true;
 
             ITokenStream tokenStream = new BufferTokenStream(expansion.Expansion, expansion.MacroDefinition);
             if (expansion.SourceToken.Language == SourceLanguage.Laye)

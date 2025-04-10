@@ -9,6 +9,8 @@ namespace LayeC.FrontEnd;
 
 public static class FrontEndDiagnostics
 {
+    private static MarkupScopedSemantic KW(string text) => new(MarkupSemantic.Keyword, text);
+
     #region 0XXX - Miscellaneous Tooling/Internal Diagnostics
 
     public static void ErrorNotSupported(this CompilerContext context, SourceText source, SourceLocation location, StringView what) =>
@@ -31,7 +33,7 @@ public static class FrontEndDiagnostics
     #region 1XXX - Extension Diagnostics
 
     public static void ExtVAOpt(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], "'__VA_OPT__' is a C23 extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], $"'{KW("__VA_OPT__")}' is a C23 extension.");
 
     #endregion
 
@@ -116,8 +118,11 @@ public static class FrontEndDiagnostics
     public static void ErrorExpectedMacroParamOrVAOptAfterHash(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3017", source, location, [], $"Expected a parameter name or '__VA_OPT__' after '#'.");
 
-    public static void WarningPotentialPreprocessorDirectiveInPragmaCExpression(this CompilerContext context, Token token) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "3016", token.Source, token.Location, [], $"C preprocessor directives are not processed within 'pragma \"C\" ( )' expressions.");
+    public static void WarningPotentialPreprocessorDirectiveInPragmaCExpression(this CompilerContext context, Token token)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3018", token.Source, token.Location, [], "C preprocessor directives are not processed within 'pragma \"C\" ( )' expressions.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "3018", token.Source, token.Location, [], "Did you mean `pragma \"C\" { }`?");
+    }
 
     #endregion
 

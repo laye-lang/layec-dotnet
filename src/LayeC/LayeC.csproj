@@ -2,7 +2,7 @@
 
     <PropertyGroup>
 		<OutputType>Exe</OutputType>
-		<AssemblyName>layec</AssemblyName>
+		<AssemblyName>dnlayec</AssemblyName>
 		<TargetFramework>net9.0</TargetFramework>
 		<LangVersion>12.0</LangVersion>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -23,6 +23,9 @@
 		<InvariantGlobalization>true</InvariantGlobalization>
 		<SelfContained>true</SelfContained>
 	</PropertyGroup>
+	<ItemGroup>
+	  <Folder Include="Driver\Docs\" />
+	</ItemGroup>
 
 	<!--
     <ItemGroup>

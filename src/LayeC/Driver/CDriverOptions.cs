@@ -1,7 +1,7 @@
 ﻿using LayeC.Diagnostics;
-using LayeC.Driver;
+using LayeC.FrontEnd;
 
-namespace LayeC.FrontEnd;
+namespace LayeC.Driver;
 
 public enum CCompilerCommand
 {
