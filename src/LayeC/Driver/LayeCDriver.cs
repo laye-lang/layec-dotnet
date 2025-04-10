@@ -16,7 +16,8 @@ public sealed class LayeCDriver
 
             CompilerDriver driver = args switch
             {
-                ["doc", .. string[] rest] => throw new NotImplementedException(),
+                ["config", .. string[] rest] => new LayeCDriverConfig(programName, diagProvider, LayeCDriverConfigOptions.Parse(diag, new CliArgumentIterator(rest))),
+                ["doc", .. string[] rest] => new LayeCDriverDoc(programName, diagProvider, LayeCDriverDocOptions.Parse(diag, new CliArgumentIterator(rest))),
                 _ => LayeCDriverCompiler.Create(diagProvider, LayeCDriverCompilerOptions.Parse(diag, new CliArgumentIterator(args)), programName),
             };
 

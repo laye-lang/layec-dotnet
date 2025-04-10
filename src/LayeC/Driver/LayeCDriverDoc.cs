@@ -3,9 +3,8 @@
 namespace LayeC.Driver;
 
 public sealed class LayeCDriverDoc(string programName, DiagnosticConsumerProvider diagProvider, LayeCDriverDocOptions options)
-    : CompilerDriver(programName)
+    : CompilerDriver(programName, new(diagProvider(options.OutputColoring)))
 {
-    public IDiagnosticConsumer Diag { get; } = diagProvider(options.OutputColoring);
     public LayeCDriverDocOptions Options { get; } = options;
 
     public override int ShowHelp()
@@ -20,7 +19,7 @@ public sealed class LayeCDriverDoc(string programName, DiagnosticConsumerProvide
 }
 
 public sealed class LayeCDriverDocOptions
-    : LayeCSharedDriverOptions<LayeCDriverCompilerOptions>
+    : LayeCSharedDriverOptions<LayeCDriverDocOptions>
 {
     public string? FeatureName { get; set; }
 

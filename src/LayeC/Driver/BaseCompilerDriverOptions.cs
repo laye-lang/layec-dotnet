@@ -2,12 +2,21 @@
 
 namespace LayeC.Driver;
 
+public interface IBaseCompilerDriverOptions
+{
+    public bool ShowVersion { get; set; }
+    public bool ShowHelp { get; set; }
+    public bool ShowVerboseOutput { get; set; }
+    public bool OutputColoring { get; set; }
+}
+
 public record class BaseCompilerDriverParseState
 {
     public Trilean OutputColoring { get; set; } = Trilean.Unknown;
 }
 
 public abstract class BaseCompilerDriverOptions<TSelf, TParseState>
+    : IBaseCompilerDriverOptions
     where TSelf : BaseCompilerDriverOptions<TSelf, TParseState>, new()
     where TParseState : BaseCompilerDriverParseState, new()
 {
