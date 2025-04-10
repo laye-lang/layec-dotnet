@@ -36,7 +36,9 @@ Options:
 
         if (Options.List)
         {
-            Diag.Emit(DiagnosticLevel.Warning, "Gotta figure out how to list all available options.");
+            foreach (var (configKey, (configType, configDefault)) in ToolingOptions.Keys.OrderBy(pair => pair.Key))
+                Console.WriteLine($"{configKey} ({configType}, default: {configDefault})");
+
             return 0;
         }
 
