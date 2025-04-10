@@ -1,4 +1,6 @@
-﻿using LayeC.Diagnostics;
+﻿using System.Diagnostics;
+
+using LayeC.Diagnostics;
 
 namespace LayeC.Driver;
 
@@ -32,7 +34,22 @@ Options:
         if (Options.ShowHelp)
             return ShowHelp();
 
-        Diag.Emit(DiagnosticLevel.Warning, "Nothing to be done yet, sorry.");
+        if (Options.List)
+        {
+            Diag.Emit(DiagnosticLevel.Warning, "Gotta figure out how to list all available options.");
+            return 0;
+        }
+
+        Debug.Assert(Options.ConfigKey is not null);
+
+        if (ToolingOptions.TryGetRawKeyValue(Options.ConfigKey, out bool isPresent) is string value)
+        {
+            if (!isPresent)
+                Console.Write('*');
+            Console.WriteLine(value);
+        }
+        else Diag.Emit(DiagnosticLevel.Error, $"No such config key '{Options.ConfigKey}'.");
+
         return 0;
     }
 }

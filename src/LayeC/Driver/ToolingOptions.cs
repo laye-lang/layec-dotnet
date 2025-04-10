@@ -15,10 +15,11 @@ public static class ToolingOptions
     private const string OutputColoringKey = "output-coloring";
     private const string SimpleDiagnosticsKey = "simple-diagnostics";
 
-    public static readonly (string Key, string TypeString)[] Keys = [
-        (OutputColoringKey, "trilean"),
-        (SimpleDiagnosticsKey, "trilean"),
-    ];
+    public static readonly IReadOnlyDictionary<string, (string TypeString, string DefaultValue)> Keys = new Dictionary<string, (string TypeString, string DefaultValue)>()
+    {
+        {OutputColoringKey, ("trilean", "default")},
+        {SimpleDiagnosticsKey, ("trilean", "default")},
+    };
 
     private static readonly FileInfo _fileInfo;
     private static readonly List<LineInfo> _fileLines = [];
@@ -87,6 +88,22 @@ public static class ToolingOptions
     {
         get => GetTriState(SimpleDiagnosticsKey, Trilean.Unknown);
         set => SetTriState(SimpleDiagnosticsKey, value);
+    }
+
+    public static string? TryGetRawKeyValue(string key, out bool isPresent)
+    {
+        isPresent = false;
+
+        var li = _fileLines.Find(li => li.Key == key);
+        // if this didn't find the value, Key will not match
+        if (li.Key == key)
+        {
+            isPresent = true;
+            return li.Value;
+        }
+        else if (Keys.TryGetValue(key, out var pair))
+            return pair.DefaultValue;
+        else return null;
     }
 
     private static int GetKeyIndex(string key) => _fileLines.FindIndex(li => li.Key == key);
