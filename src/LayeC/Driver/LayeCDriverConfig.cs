@@ -42,13 +42,22 @@ Options:
 
         Debug.Assert(Options.ConfigKey is not null);
 
-        if (ToolingOptions.TryGetRawKeyValue(Options.ConfigKey, out bool isPresent) is string value)
+        if (Options.ConfigValue is string configValue)
         {
-            if (!isPresent)
-                Console.Write('*');
-            Console.WriteLine(value);
+            if (!ToolingOptions.SetConfigValue(Options.ConfigKey, configValue))
+                Diag.Emit(DiagnosticLevel.Error, $"No such config key '{Options.ConfigKey}'.");
+            else ToolingOptions.SaveToFile();
         }
-        else Diag.Emit(DiagnosticLevel.Error, $"No such config key '{Options.ConfigKey}'.");
+        else
+        {
+            if (ToolingOptions.TryGetRawKeyValue(Options.ConfigKey, out bool isPresent) is string value)
+            {
+                if (!isPresent)
+                    Console.Write('*');
+                Console.WriteLine(value);
+            }
+            else Diag.Emit(DiagnosticLevel.Error, $"No such config key '{Options.ConfigKey}'.");
+        }
 
         return 0;
     }

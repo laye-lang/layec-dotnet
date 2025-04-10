@@ -90,6 +90,26 @@ public static class ToolingOptions
         set => SetTriState(SimpleDiagnosticsKey, value);
     }
 
+    public static void SaveToFile()
+    {
+        if (!_fileInfo.Exists)
+        {
+            var dir = _fileInfo.Directory;
+            if (dir is null) return;
+            if (!dir.Exists) dir.Create();
+        }
+
+        _fileInfo.WriteAllLines(_fileLines
+            .Select(li => li.RawLineText)
+            .Reverse().SkipWhile(string.IsNullOrWhiteSpace)
+            .Reverse());
+    }
+
+    public static bool SetConfigValue(string key, string value)
+    {
+        return SetValueRaw(key, value) >= 0;
+    }
+
     public static string? TryGetRawKeyValue(string key, out bool isPresent)
     {
         isPresent = false;
@@ -118,12 +138,14 @@ public static class ToolingOptions
         else return (T)value;
     }
 
-    private static void SetValue<T>(string key, T value, Func<T, string> toString)
-        where T : notnull
+    private static int SetValueRaw(string key, string value)
     {
+        if (!Keys.TryGetValue(key, out var _))
+            return -1;
+
         int index = GetKeyIndex(key);
 
-        string valueString = toString(value);
+        string valueString = value;
         var lineInfo = new LineInfo($"{key} = {valueString}", key, valueString);
 
         if (index >= 0)
@@ -134,7 +156,23 @@ public static class ToolingOptions
             _fileLines.Add(lineInfo);
         }
 
-        _cachedValues[index] = value;
+        return index;
+    }
+
+    private static void SetValue<T>(string key, string value, Func<string, T> parser)
+        where T : notnull
+    {
+        int index = SetValueRaw(key, value);
+        if (index >= 0)
+            _cachedValues[index] = parser(value);
+    }
+
+    private static void SetValue<T>(string key, T value, Func<T, string> toString)
+        where T : notnull
+    {
+        int index = SetValueRaw(key, toString(value));
+        if (index >= 0)
+            _cachedValues[index] = value;
     }
 
     private static bool GetBool(string key, bool defaultValue) => GetValue(key, defaultValue, value => value.Equals("true", StringComparison.CurrentCultureIgnoreCase));
