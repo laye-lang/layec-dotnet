@@ -2,6 +2,7 @@
 using System.Diagnostics.Metrics;
 using System.Linq;
 
+using LayeC.Diagnostics;
 using LayeC.Source;
 
 namespace LayeC.FrontEnd;
@@ -466,22 +467,24 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         Context.Assert(index > 0, "There should never be a ## token at the beginning of the macro tokens list.");
                         Context.Assert(index < macroDef.Tokens.Count - 1, "There should never be a ## token at the end of the macro tokens list.");
 
-                        Token beforeToken = macroDef.Tokens[index - 1];
-                        Token afterToken = macroDef.Tokens[index + 1];
+                        var beforeToken = macroDef.Tokens[index - 1];
+                        var afterToken = macroDef.Tokens[index + 1];
 
                         string beforeTokenText = StringizeToken(beforeToken, true);
                         string afterTokenText = StringizeToken(afterToken, true);
-                        SourceText source = new("<preprocessor>", beforeTokenText + afterTokenText);
+                        var source = new SourceText("<preprocessor>", beforeTokenText + afterTokenText);
 
-                        Lexer lexer = new(Context, source, LanguageOptions, SourceLanguage.C);
-                        Token newToken = lexer.ReadNextPPToken();
+                        var proxyContext = new CompilerContext(VoidDiagnosticConsumer.Instance, Context.Target) { IncludePaths = Context.IncludePaths };
+                        var lexer = new Lexer(proxyContext, source, LanguageOptions, SourceLanguage.C);
+
+                        var newToken = lexer.ReadNextPPToken();
                         newToken.LeadingTrivia = beforeToken.LeadingTrivia;
                         newToken.TrailingTrivia = afterToken.TrailingTrivia;
 
                         if (!lexer.IsAtEnd)
-                        {
                             Context.ErrorConcatenationShouldOnlyResultInOneToken(hashHashToken.Source, hashHashToken.Location);
-                        }
+                        else if (newToken is { Kind: TokenKind.EndOfFile } || proxyContext.Diag.HasEmittedErrors)
+                            Context.ErrorConcatenationFormedInvalidToken(hashHashToken.Source, hashHashToken.Location, source.Text);
 
                         expansion.Expansion.Add(newToken);
                     } else expansion.Expansion.Add(token);

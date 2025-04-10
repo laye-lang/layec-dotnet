@@ -127,6 +127,9 @@ public static class FrontEndDiagnostics
     public static void ErrorConcatenationShouldOnlyResultInOneToken(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3019", source, location, [], "Concatenation should only result in one token.");
 
+    public static void ErrorConcatenationFormedInvalidToken(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenText) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3020", source, location, [], $"Concatenation resulted in '{tokenText}', an invalid token.");
+
     #endregion
 
     #region 4XXX - Syntactic Diagnostics
