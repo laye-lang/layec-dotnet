@@ -1,0 +1,8 @@
+pragma include "foo.h"
+
+pragma define urmom 1##2
+
+void main() {
+    #urmom;
+    pragma "C" ( SetBackgroundColorImpl_(((Color){(10), (20), (30)})) );
+}

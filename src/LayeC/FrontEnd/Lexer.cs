@@ -41,7 +41,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     private bool _isAtStartOfLine = true;
     private bool _hasWhiteSpaceBefore = false;
 
-    private bool IsAtEnd => _readPosition >= Source.Text.Length;
+    public bool IsAtEnd => _readPosition >= Source.Text.Length;
     private char CurrentCharacter => PeekCharacter(0, out int _);
 
     public SourceLocation CurrentLocation => new(_readPosition);

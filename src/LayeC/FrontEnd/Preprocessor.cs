@@ -445,7 +445,47 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
             if (macroDef.RequiresPasting)
             {
-                Context.Todo("Pasting...");
+                foreach (var (index, token) in macroDef.Tokens.Index())
+                {
+                    if (index < macroDef.Tokens.Count - 1)
+                    {
+                        Token nextToken = macroDef.Tokens[index + 1];
+                        if (nextToken is { Kind: TokenKind.HashHash })
+                            continue;
+                    }
+
+                    if (index > 0)
+                    {
+                        Token nextToken = macroDef.Tokens[index - 1];
+                        if (nextToken is { Kind: TokenKind.HashHash })
+                            continue;
+                    }
+
+                    if (token is { Kind: TokenKind.HashHash } hashHashToken)
+                    {
+                        Context.Assert(index > 0, "There should never be a ## token at the beginning of the macro tokens list.");
+                        Context.Assert(index < macroDef.Tokens.Count - 1, "There should never be a ## token at the end of the macro tokens list.");
+
+                        Token beforeToken = macroDef.Tokens[index - 1];
+                        Token afterToken = macroDef.Tokens[index + 1];
+
+                        string beforeTokenText = StringizeToken(beforeToken, true);
+                        string afterTokenText = StringizeToken(afterToken, true);
+                        SourceText source = new("<preprocessor>", beforeTokenText + afterTokenText);
+
+                        Lexer lexer = new(Context, source, LanguageOptions, SourceLanguage.C);
+                        Token newToken = lexer.ReadNextPPToken();
+                        newToken.LeadingTrivia = beforeToken.LeadingTrivia;
+                        newToken.TrailingTrivia = afterToken.TrailingTrivia;
+
+                        if (!lexer.IsAtEnd)
+                        {
+                            Context.ErrorConcatenationShouldOnlyResultInOneToken(hashHashToken.Source, hashHashToken.Location);
+                        }
+
+                        expansion.Expansion.Add(newToken);
+                    } else expansion.Expansion.Add(token);
+                }
             }
             else expansion.Expansion.AddRange(macroDef.Tokens);
 

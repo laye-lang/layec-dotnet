@@ -124,6 +124,9 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Note, "3018", token.Source, token.Location, [], "Did you mean `pragma \"C\" { }`?");
     }
 
+    public static void ErrorConcatenationShouldOnlyResultInOneToken(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3019", source, location, [], "Concatenation should only result in one token.");
+
     #endregion
 
     #region 4XXX - Syntactic Diagnostics
