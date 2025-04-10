@@ -1,12 +1,12 @@
 ﻿using System.Diagnostics;
-using System.Drawing;
 using System.Text;
 
 using LayeC.Formatting;
+using LayeC.Source;
 
 namespace LayeC.Diagnostics;
 
-public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
+public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor, bool useByteLocations = true)
     : IDiagnosticConsumer
 {
     private const string Reset = "\x1b[0m";
@@ -101,6 +101,7 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
 
     public TextWriter Writer { get; } = writer;
     public bool UseColor { get; } = useColor;
+    public bool UseByteLocations { get; } = useByteLocations;
 
     private readonly List<Diagnostic> _diagnosticGroup = new(10);
 
@@ -155,110 +156,167 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
         Debug.Assert(displayWidth >= MinRenderWidth, "Attempt to render a diagnostic group with a specified width less than the configured minimum.");
 
         var groupBuilder = new StringBuilder();
+        var formatter = new FormattedDiagnosticMessageMarkupRenderer(UseColor);
 
-        // render the contents of the diagnostics to a subset of the width, since there will be formatting characters at the left.
-        int clientWidth = displayWidth - 3;
+        const int WellEdgeWidth = 2;
+        const int WellNumberWidthMin = 3;
 
-        for (int i = 0; i < group.Length; i++)
+        int wellInnerWidth = WellNumberWidthMin;
+
+        // calculate the width of the line number well
+        foreach (var diag in group)
         {
-            if (i > 0 && group[i - 1].Source is not null)
+            if (diag.Source is null) continue;
+
+            var shortInfo = diag.Source.SeekLineColumn(diag.Location);
+            int lineNumberWidth = 1 + (int)Math.Log10(shortInfo.Line + 1);
+            wellInnerWidth = Math.Max(wellInnerWidth, lineNumberWidth);
+        }
+
+        int wellInnerLeftPadding = WellEdgeWidth + Math.Max(0, wellInnerWidth - 3);
+        bool renderWellBottom = true;
+
+        for (int gi = 0; gi < group.Length; gi++)
+        {
+            Diagnostic diag = group[gi];
+
+            if (gi == 0)
+                groupBuilder.Append('╭');
+            else groupBuilder.Append('├');
+
+            for (int i = 0; i < wellInnerLeftPadding - 1; i++)
+                groupBuilder.Append('─');
+
+            var levelColor = diag.Level switch
             {
-                if (i == 1)
-                    groupBuilder.AppendLine("│");
-                else groupBuilder.AppendLine("┆");
-            }
+                DiagnosticLevel.Note => MarkupColor.Green,
+                DiagnosticLevel.Remark => MarkupColor.Yellow,
+                DiagnosticLevel.Warning => MarkupColor.Magenta,
+                DiagnosticLevel.Error => MarkupColor.Red,
+                DiagnosticLevel.Fatal => MarkupColor.Cyan,
+                _ => MarkupColor.White,
+            };
 
-            // SourceLocation? previousLocation = i > 0 && group[i - 1].Source is not null ? group[i - 1].Location : null;
-            string renderedText = FormatDiagnostic(group[i], clientWidth).TrimEnd('\r', '\n');
+            groupBuilder.Append('[');
+            if (UseColor)
+                groupBuilder.Append(GetColorEscapeForMarkupColor(levelColor));
+            groupBuilder.Append(diag.Level);
+            if (UseColor)
+                groupBuilder.Append(Reset);
+            groupBuilder.Append(']');
 
-            bool printTrailingBoxClose = true;
-            string[] renderedLines = renderedText.Split(Environment.NewLine);
-            for (int j = 0; j < renderedLines.Length; j++)
+            if (diag.Source is not null)
             {
-                ResetColor(groupBuilder);
+                var shortInfo = diag.Source.SeekLineColumn(diag.Location);
+                groupBuilder.Append('@');
+                groupBuilder.Append(diag.Source.Name);
 
-                if (j == renderedLines.Length - 1 && i == group.Length - 1)
+                if (UseByteLocations)
                 {
-                    if (group.Length == 1 && renderedLines.Length == 1)
-                        groupBuilder.Append("── ");
-                    else if (j != 0)
-                    {
-                        if (i == 0)
-                            groupBuilder.Append("│  ");
-                        else groupBuilder.Append("┆  ");
-                    }
-                    else
-                    {
-                        if (group[i].Source is not null)
-                            groupBuilder.Append("├─ ");
-                        else
-                        {
-                            printTrailingBoxClose = false;
-                            groupBuilder.Append("╰─ ");
-                        }
-                    }
-                }
-                else if (j == 0)
-                {
-                    if (i == 0)
-                        groupBuilder.Append("╭─ ");
-                    else groupBuilder.Append("├─ ");
+                    groupBuilder.Append('[');
+                    groupBuilder.Append(diag.Location.Offset);
+                    groupBuilder.Append(']');
                 }
                 else
                 {
-                    if (i == 0)
-                        groupBuilder.Append("│  ");
-                    else groupBuilder.Append("┆  ");
+                    groupBuilder.Append('(');
+                    groupBuilder.Append(shortInfo.Line);
+                    groupBuilder.Append(", ");
+                    groupBuilder.Append(shortInfo.Column);
+                    groupBuilder.Append(')');
                 }
 
-                groupBuilder.AppendLine(renderedLines[j]);
+                groupBuilder.AppendLine();
+                groupBuilder.Append("│ ");
+                for (int i = 0; i < wellInnerWidth; i++)
+                    groupBuilder.Append(' ');
+                groupBuilder.Append(" ├─ ");
             }
+            else groupBuilder.Append(": ");
 
-            if (printTrailingBoxClose && i == group.Length - 1 && (group.Length > 1 || renderedLines.Length > 1))
+            groupBuilder.AppendLine(formatter.Render(new MarkupScopedStyle(MarkupStyle.Bold, diag.Message)));
+
+            if (diag.Source is not null)
             {
-                ResetColor(groupBuilder);
-                //groupBuilder.AppendLine("╯");
-                groupBuilder.AppendLine("╰─ ");
+                groupBuilder.Append("│ ");
+                for (int i = 0; i < wellInnerWidth; i++)
+                    groupBuilder.Append(' ');
+                groupBuilder.AppendLine(" │");
+
+                var lineInfo = diag.Source.Seek(diag.Location);
+                SourceLocationInfo? prevInfo = null, nextInfo = null;
+
+                if (lineInfo.LineStart > 0)
+                {
+                    prevInfo = diag.Source.Seek(lineInfo.LineStart - 1);
+                    if (prevInfo.Value.LineLength == 0 || prevInfo.Value.LineText.All(char.IsWhiteSpace))
+                        prevInfo = null;
+                }
+
+                if (lineInfo.LineStart + lineInfo.LineLength < diag.Source.Length)
+                {
+                    nextInfo = diag.Source.Seek(lineInfo.LineStart + lineInfo.LineLength + 1);
+                    if (nextInfo.Value.LineLength == 0 || nextInfo.Value.LineText.All(char.IsWhiteSpace))
+                        nextInfo = null;
+                }
+
+                int sharedLeadingSpace = 0;
+
+                if (prevInfo is not null)
+                    RenderLine(prevInfo.Value);
+
+                RenderLine(lineInfo);
+
+                if (gi == group.Length - 1 && nextInfo is null)
+                {
+                    renderWellBottom = false;
+                    groupBuilder.Append("╰─");
+                    for (int i = 0; i < wellInnerWidth; i++)
+                        groupBuilder.Append('─');
+                    groupBuilder.Append("─╯ ");
+                }
+                else
+                {
+                    groupBuilder.Append("│ ");
+                    for (int i = 0; i < wellInnerWidth; i++)
+                        groupBuilder.Append(' ');
+                    groupBuilder.Append(" │ ");
+                }
+
+                for (int i = 0; i < lineInfo.Column - 1; i++)
+                    groupBuilder.Append(' ');
+                groupBuilder.AppendLine("^");
+
+                if (nextInfo is not null)
+                    RenderLine(nextInfo.Value);
+
+                void RenderLine(SourceLocationInfo info)
+                {
+                    int lineNumberWidth = 1 + (int)Math.Log10(info.Line);
+                    groupBuilder.Append('│');
+                    for (int i = 0; i < 1 + (wellInnerWidth - lineNumberWidth); i++)
+                        groupBuilder.Append(' ');
+                    groupBuilder.Append(info.Line);
+                    groupBuilder.Append(" │ ");
+                    groupBuilder.AppendLine((string)info.LineText[sharedLeadingSpace..Math.Min(sharedLeadingSpace + 120, info.LineLength)]);
+                }
             }
         }
 
-        ResetColor(groupBuilder);
+        if (renderWellBottom)
+        {
+            ResetColor(groupBuilder);
+            groupBuilder.Append('╰');
+            for (int i = 0; i < wellInnerWidth + (2 * (WellEdgeWidth - 1)); i++)
+                groupBuilder.Append('─');
+            groupBuilder.Append('╯');
+        }
+
         return groupBuilder.ToString();
     }
 
-    private string FormatDiagnostic(Diagnostic diag, int clientWidth)
-    {
-        var markupRenderer = new FormattedDiagnosticMessageMarkupRenderer(UseColor, clientWidth);
-        var builder = new MarkupBuilder();
-
-        if (diag.Source is not null)
-        {
-            builder.Append($"{diag.Source.Name}[{diag.Location.Offset}]:");
-            builder.Append(MarkupLineBreak.Instance);
-        }
-
-        var color = diag.Level switch
-        {
-            DiagnosticLevel.Note => MarkupColor.Green,
-            DiagnosticLevel.Remark => MarkupColor.Yellow,
-            DiagnosticLevel.Warning => MarkupColor.Magenta,
-            DiagnosticLevel.Error => MarkupColor.Red,
-            DiagnosticLevel.Fatal => MarkupColor.Cyan,
-            _ => MarkupColor.White,
-        };
-
-        builder.Append(new MarkupScopedColor(color, diag.Level.ToString()));
-        builder.Append(": ");
-        builder.Append(diag.Message);
-
-        if (diag.Source is null)
-            return markupRenderer.Render(builder.Markup);
-
-        return markupRenderer.Render(builder.Markup);
-    }
-
 #pragma warning disable CS9113 // Parameter is unread.
-    private sealed class FormattedDiagnosticMessageMarkupRenderer(bool useColor, int clientWidth)
+    private sealed class FormattedDiagnosticMessageMarkupRenderer(bool useColor)
 #pragma warning restore CS9113 // Parameter is unread.
     {
         private readonly Stack<string> _colorEscapes = [];

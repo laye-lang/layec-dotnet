@@ -3,6 +3,21 @@ using System.Numerics;
 
 namespace LayeC.Source;
 
+public readonly struct SourceLocationInfo(int line, int column, int lineStart, int lineLength, StringView lineText)
+{
+    public readonly int Line = line;
+    public readonly int Column = column;
+    public readonly int LineStart = lineStart;
+    public readonly int LineLength = lineLength;
+    public readonly StringView LineText = lineText;
+}
+
+public readonly struct SourceLocationInfoShort(int line, int column)
+{
+    public readonly int Line = line;
+    public readonly int Column = column;
+}
+
 public readonly struct SourceLocation(int offset)
     : IAdditiveIdentity<SourceLocation, SourceLocation>
     , IAdditionOperators<SourceLocation, SourceLocation, SourceLocation>
