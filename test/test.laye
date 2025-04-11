@@ -1,1 +1,1 @@
-pragma include "foo.h"
+pragma include <stdio.h>

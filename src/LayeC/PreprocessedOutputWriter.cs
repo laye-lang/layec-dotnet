@@ -37,7 +37,7 @@ public sealed class PreprocessedOutputWriter(TextWriter writer, bool includeComm
                 case TriviumLiteral l: _writer.Write((string)l.Literal); break;
                 case TriviumShebangComment: _writer.Write(source.Substring(trivium.Range)); break;
                 case TriviumWhiteSpace: _writer.Write(source.Substring(trivium.Range)); break;
-                case TriviumNewLine: _writer.WriteLine(); break;
+                case TriviumNewLine when _includeComments || !trivia.IsLeading: _writer.WriteLine(); break;
                 case TriviumLineComment: if (_includeComments) _writer.Write(source.Substring(trivium.Range)); break;
                 case TriviumDelimitedComment: if (_includeComments) _writer.Write(source.Substring(trivium.Range)); break;
             }

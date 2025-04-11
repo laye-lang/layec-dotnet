@@ -102,7 +102,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         builder.Append('"');
     }
 
-    private static Token StringizeTokens(IReadOnlyList<Token> tokens, Token hashToken)
+    private static Token StringizeTokens(IReadOnlyList<Token> tokens, Token hashToken, Token sourceToken)
     {
         var builder = new StringBuilder();
 
@@ -122,6 +122,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             Spelling = stringValue,
             StringValue = stringValue,
             LeadingTrivia = hashToken.LeadingTrivia,
+            TrailingTrivia = sourceToken.TrailingTrivia,
             HasWhiteSpaceBefore = hashToken.HasWhiteSpaceBefore,
         };
     }
@@ -583,7 +584,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             {
                 if (Expansion.Count > 0)
                     Expansion[^1].TrailingTrivia = new([.. Expansion[^1].TrailingTrivia.Trivia, .. expandedFromToken.TrailingTrivia.Trivia], false);
-                Placemarker();
+                Placemarker(expandedFromToken);
             }
             else
             {
@@ -592,8 +593,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
         }
 
-        public void Placemarker()
+        public void Placemarker(Token trailingToken)
         {
+            // TODO(local): see if we can use this trailing token anywhere in the placemarker for trailing trivia
             if (PasteBefore)
                 PasteBefore = false;
             else if (Cursor < MacroDefinition.Tokens.Count && MacroPPTokenAtCursor.Kind == TokenKind.HashHash)
@@ -729,13 +731,15 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
                 if (expansion.InVAOpt && expansion.Cursor == expansion.VAOptState.CloseParenIndex)
                 {
+                    var closeParenToken = expansion.MacroDefinition.Tokens[expansion.VAOptState.CloseParenIndex];
+
                     expansion.Cursor++;
                     Context.Assert(!expansion.VAOptState.PasteTokens || expansion.VAOptState.Stringize, "Only paste tokens here if we're also stringizing.");
 
                     if (expansion.VAOptState.Stringize)
                     {
                         var tokens = expansion.Expansion[expansion.VAOptState.StartOfExpansion..expansion.Expansion.Count];
-                        var stringizedToken = StringizeTokens(tokens, expansion.VAOptState.StringizeToken);
+                        var stringizedToken = StringizeTokens(tokens, expansion.VAOptState.StringizeToken, closeParenToken);
                         expansion.Expansion.RemoveRange(expansion.VAOptState.StartOfExpansion, expansion.Expansion.Count - expansion.VAOptState.StartOfExpansion);
                         expansion.PasteBefore = expansion.VAOptState.PasteTokens;
                         expansion.Append(this, stringizedToken);
@@ -744,7 +748,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     {
                         bool expandsToNothing = expansion.Expansion.Count == expansion.VAOptState.StartOfExpansion && !expansion.VAOptState.DidPaste;
                         if (expansion.VAOptState.EndsWithPlacemarker || expandsToNothing)
-                            expansion.Placemarker();
+                            expansion.Placemarker(closeParenToken);
                     }
 
                     expansion.VAOptState.Reset();
@@ -1021,7 +1025,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
 
         var paramTokens = expansion.Arguments[expansion.GetParamIndex(paramToken)];
-        return StringizeTokens(paramTokens, hashToken);
+        return StringizeTokens(paramTokens, hashToken, paramToken);
     }
 
     private void Paste(MacroExpansion expansion, Token hashHashToken, Token rightToken)
