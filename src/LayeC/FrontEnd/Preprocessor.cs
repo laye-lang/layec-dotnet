@@ -24,13 +24,82 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 {
     public static string StringizeToken(Token token, bool escape)
     {
+        var builder = new StringBuilder();
+        StringizeToken(builder, token, escape);
+        return builder.ToString();
+    }
+
+    public static void StringizeToken(StringBuilder builder, Token token, bool escape)
+    {
         switch (token.Kind)
         {
-            default: return (string)token.Spelling;
-            case TokenKind.Invalid: return "<INVALID>";
-            case TokenKind.UnexpectedCharacter: return "<?>";
-            case TokenKind.EndOfFile: return "<EOF>";
+            //default: throw new ArgumentException($"Unexpected token kind: {token.Kind}");
+            default: builder.Append((string)token.Spelling); break;
+
+            case TokenKind.Invalid: builder.Append("<INVALID>"); break;
+            case TokenKind.UnexpectedCharacter: builder.Append("<?>"); break;
+
+            case TokenKind.EndOfFile: builder.Append("<EOF>"); break;
+            
+            case TokenKind.CPPIdentifier: builder.Append((string)token.Spelling); break;
+            case TokenKind.CPPNumber: builder.Append((string)token.Spelling); break;
+            case TokenKind.CPPVAOpt: builder.Append("__VA_OPT__"); break;
+            case TokenKind.CPPVAArgs: builder.Append("__VA_ARGS__"); break;
+            case TokenKind.CPPMacroParam: throw new ArgumentException("Macro parameter names should have already been replaced.");
+            case TokenKind.CPPHeaderName: throw new ArgumentException("Cannot stringize a header name token.");
+            case TokenKind.CPPDirectiveEnd: throw new ArgumentException("Cannot stringize a directive end token.");
+            case TokenKind.CPPLayeMacroWrapperIdentifier: builder.Append((string)token.Spelling); break;
+
+            case TokenKind.Identifier: builder.Append((string)token.Spelling); break;
+            case TokenKind.LiteralInteger: builder.Append((string)token.Spelling); break;
+            case TokenKind.LiteralFloat: builder.Append((string)token.Spelling); break;
+
+            case TokenKind.LiteralCharacter:
+            {
+                if (escape)
+                    StringizeString(builder, token.StringValue, '\'');
+                else
+                {
+                    builder.Append('\'');
+                    builder.Append((string)token.StringValue);
+                    builder.Append('\'');
+                }
+            } break;
+
+            case TokenKind.LiteralString:
+            {
+                if (escape)
+                    StringizeString(builder, token.StringValue, '"');
+                else
+                {
+                    builder.Append('"');
+                    builder.Append((string)token.StringValue);
+                    builder.Append('"');
+                }
+            } break;
         }
+    }
+
+    private static void StringizeString(StringBuilder builder, StringView str, char delim)
+    {
+        builder.Append('"');
+
+        if (delim == '"')
+            builder.Append("\\\"");
+        else builder.Append('\'');
+
+        foreach (char c in str)
+        {
+            if (c is '"' or '\\')
+                builder.Append('\\');
+            builder.Append(c);
+        }
+
+        if (delim == '"')
+            builder.Append("\\\"");
+        else builder.Append('\'');
+
+        builder.Append('"');
     }
 
     private static Token StringizeTokens(IReadOnlyList<Token> tokens, Token hashToken)
@@ -44,7 +113,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 first = false;
             else if (token.HasWhiteSpaceBefore)
                 builder.Append(' ');
-            builder.Append(StringizeToken(token, true));
+            StringizeToken(builder, token, true);
         }
 
         string stringValue = builder.ToString();
@@ -221,7 +290,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         var ppToken = ReadTokenRawImpl();
         if (ppToken.Kind == TokenKind.CPPIdentifier)
         {
-            // TODO(local): see if we should explicitly block macro expansion for this token
+            if (_macroDefs.TryGetValue(ppToken.StringValue, out var macroDef) && macroDef.IsExpanding)
+                ppToken.DisableExpansion = true;
         }
 
         return ppToken;
@@ -507,7 +577,11 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 InsertWhiteSpace = true;
 
             if (!tokens.Any())
+            {
+                if (Expansion.Count > 0)
+                    Expansion[^1].TrailingTrivia = new([.. Expansion[^1].TrailingTrivia.Trivia, .. expandedFromToken.TrailingTrivia.Trivia], false);
                 Placemarker();
+            }
             else
             {
                 foreach (var token in tokens)
@@ -588,7 +662,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             bool tryToExpand = true;
             if (!macroDef.IsVariadic)
             {
-                if (arguments.Length != macroDef.ParameterNames.Count)
+                bool isValidIfZeroArguments = arguments.Length == 1 && macroDef.ParameterNames.Count == 0;
+                if (arguments.Length != macroDef.ParameterNames.Count && !isValidIfZeroArguments)
                 {
                     Context.ErrorIncorrectArgumentCountForFunctionLikeMacro(ppToken, macroDef.NameToken, isTooFew: arguments.Length < macroDef.ParameterNames.Count);
                     tryToExpand = false;
@@ -639,7 +714,11 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         while (expansion.Cursor < expansion.VAOptState.CloseParenIndex)
                             expansion.Cursor++;
 
+                        // Per C2y 6.10.5.2p7, the __VA_OPT__ parameter expands to
+                        // a single placemarker in this case.
                         expansion.VAOptState.EndsWithPlacemarker = true;
+
+                        Context.Assert(expansion.MacroPPTokenAtCursor.Kind == TokenKind.CloseParen, token.Source, token.Location, "This should be the closing paren of the __VA_OPT__.");
                     }
 
                     token = expansion.MacroPPTokenAtCursor;
@@ -1062,11 +1141,10 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         var macroData = new ParsedMacroData()
         {
             NameToken = macroNameToken,
-            //Name = macroNameToken.StringValue,
         };
 
         var token = ReadTokenRaw();
-        macroData.IsFunctionLike = token is { Kind: TokenKind.OpenParen, HasWhiteSpaceBefore: false };
+        macroData.IsFunctionLike = token.Kind == TokenKind.OpenParen && macroNameToken.TrailingTrivia.Trivia.Count == 0;
 
         if (macroData.IsFunctionLike)
         {
@@ -1132,7 +1210,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         for (int i = 0; i < macroData.Tokens.Count; )
         {
-            switch (macroData.Tokens[i++].Kind)
+            token = macroData.Tokens[i++];
+            switch (token.Kind)
             {
                 case TokenKind.Hash: DefineDirectiveCheckHash(macroData, i); break;
                 case TokenKind.HashHash: DefineDirectiveCheckHashHash(macroData, i); break;
