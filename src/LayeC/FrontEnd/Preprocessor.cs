@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Linq;
+using System.Threading;
 
 using LayeC.Diagnostics;
 using LayeC.Source;
@@ -54,6 +55,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
         }
 
+        Context.Diag.Flush();
         return [.. tokens];
     }
 
@@ -410,12 +412,35 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
     }
 
+    private sealed class VAOptState
+    {
+        public int StartOfExpansion { get; set; }
+        public int Index { get; set; } = -1;
+        public int CloseParenIndex { get; set; }
+        public SourceLocation StringizeLocation { get; set; }
+        public bool StringiZe { get; set; }
+        public bool StringizeWhitespaceBefore { get; set; }
+        public bool PasteTokens { get; set; }
+        public bool EndsWithPlacemarker { get; set; }
+        public bool DidPaste { get; set; }
+    }
+
     private sealed class MacroExpansion
     {
         public required PreprocessorMacroDefinition MacroDefinition { get; init; }
         public required Token SourceToken { get; init; }
 
+        public List<List<Token>> Arguments { get; } = [];
+        public List<List<Token>> ExpandedArguments { get; } = [];
+
         public List<Token> Expansion { get; } = [];
+        public int Cursor { get; set; }
+        public Token MacroPPTokenAtCursor => MacroDefinition.Tokens[Cursor];
+
+        public VAOptState VAOptState { get; } = new();
+
+        public bool InsertWhiteSpace { get; set; }
+        public bool PasteBefore { get; set; }
     }
 
     private bool MaybeExpandMacro(Token ppToken)
@@ -446,50 +471,17 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
             if (macroDef.RequiresPasting)
             {
-                foreach (var (index, token) in macroDef.Tokens.Index())
+                for (; expansion.Cursor < macroDef.Tokens.Count; expansion.Cursor++)
                 {
-                    if (index < macroDef.Tokens.Count - 1)
+                    var token = expansion.MacroPPTokenAtCursor;
+                    // Only attempt to paste if there's actually a valid token.
+                    // We error on invalid '##' placement, but allow the preprocessor to continue.
+                    if (token.Kind == TokenKind.HashHash && expansion.Cursor + 1 < expansion.MacroDefinition.Tokens.Count)
                     {
-                        Token nextToken = macroDef.Tokens[index + 1];
-                        if (nextToken is { Kind: TokenKind.HashHash })
-                            continue;
+                        expansion.Cursor++;
+                        Paste(expansion, token, expansion.MacroPPTokenAtCursor);
                     }
-
-                    if (index > 0)
-                    {
-                        Token nextToken = macroDef.Tokens[index - 1];
-                        if (nextToken is { Kind: TokenKind.HashHash })
-                            continue;
-                    }
-
-                    if (token is { Kind: TokenKind.HashHash } hashHashToken)
-                    {
-                        Context.Assert(index > 0, "There should never be a ## token at the beginning of the macro tokens list.");
-                        Context.Assert(index < macroDef.Tokens.Count - 1, "There should never be a ## token at the end of the macro tokens list.");
-
-                        var beforeToken = macroDef.Tokens[index - 1];
-                        var afterToken = macroDef.Tokens[index + 1];
-
-                        string beforeTokenText = StringizeToken(beforeToken, true);
-                        string afterTokenText = StringizeToken(afterToken, true);
-                        var source = new SourceText("<preprocessor>", beforeTokenText + afterTokenText);
-
-                        var proxyContext = new CompilerContext(VoidDiagnosticConsumer.Instance, Context.Target) { IncludePaths = Context.IncludePaths };
-                        var lexer = new Lexer(proxyContext, source, LanguageOptions, SourceLanguage.C);
-
-                        var newToken = lexer.ReadNextPPToken();
-                        newToken.LeadingTrivia = beforeToken.LeadingTrivia;
-                        newToken.TrailingTrivia = afterToken.TrailingTrivia;
-
-                        if (!lexer.IsAtEnd)
-                            Context.ErrorConcatenationShouldOnlyResultInOneToken(hashHashToken.Source, hashHashToken.Location);
-                        else if (newToken is { Kind: TokenKind.EndOfFile } || proxyContext.Diag.HasEmittedErrors)
-                            Context.ErrorConcatenationFormedInvalidToken(hashHashToken.Source, hashHashToken.Location, source.Text);
-
-                        // we should probably avoid adding stray EOFs
-                        if (newToken.Kind != TokenKind.EndOfFile)
-                            expansion.Expansion.Add(newToken);
-                    } else expansion.Expansion.Add(token);
+                    else expansion.Expansion.Add(token);
                 }
             }
             else expansion.Expansion.AddRange(macroDef.Tokens);
@@ -584,6 +576,47 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 PushTokenStream(tokenStream);
             }
         }
+    }
+
+    private void Paste(MacroExpansion expansion, Token hashHashToken, Token rightToken)
+    {
+        if (expansion.Expansion.Count == 0)
+            return; // this should already have generated an error for an invalid concatenation
+
+        var leftToken = expansion.Expansion[^1];
+        string concatText = StringizeToken(leftToken, false) + StringizeToken(rightToken, false);
+        if (concatText.StartsWith("/*") || concatText.StartsWith("//"))
+        {
+            Context.ErrorConcatentationCannotResultInComment(hashHashToken);
+            return;
+        }
+
+        var source = new SourceText("<paste>", concatText);
+        var proxyContext = new CompilerContext(VoidDiagnosticConsumer.Instance, Context.Target) { IncludePaths = Context.IncludePaths };
+        var lexer = new Lexer(proxyContext, source, LanguageOptions, SourceLanguage.C);
+        var pastedToken = lexer.ReadNextPPToken();
+        pastedToken.LeadingTrivia = leftToken.LeadingTrivia;
+        pastedToken.TrailingTrivia = rightToken.TrailingTrivia;
+        pastedToken.IsAtStartOfLine = leftToken.IsAtStartOfLine;
+        pastedToken.HasWhiteSpaceBefore = leftToken.HasWhiteSpaceBefore;
+
+        if (!lexer.IsAtEnd)
+        {
+            Context.ErrorConcatenationShouldOnlyResultInOneToken(hashHashToken.Source, hashHashToken.Location);
+            return;
+        }
+        else if (pastedToken.Kind == TokenKind.EndOfFile || proxyContext.Diag.HasEmittedErrors)
+        {
+            Context.ErrorConcatenationFormedInvalidToken(hashHashToken.Source, hashHashToken.Location, source.Text);
+            return;
+        }
+
+        expansion.Expansion[^1] = pastedToken;
+
+        if (expansion.VAOptState.Index >= 0)
+            expansion.VAOptState.DidPaste = true;
+
+        expansion.InsertWhiteSpace = false;
     }
 
     private Token ConvertPPToken(Token ppToken)

@@ -130,6 +130,9 @@ public static class FrontEndDiagnostics
     public static void ErrorConcatenationFormedInvalidToken(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenText) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3020", source, location, [], $"Concatenation resulted in '{tokenText}', an invalid token.");
 
+    public static void ErrorConcatentationCannotResultInComment(this CompilerContext context, Token hashHashToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3021", hashHashToken.Source, hashHashToken.Location, [], "Concatenation cannot result in a comment.");
+
     #endregion
 
     #region 4XXX - Syntactic Diagnostics

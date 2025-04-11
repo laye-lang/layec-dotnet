@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 using LayeC.Diagnostics;
 using LayeC.FrontEnd;
@@ -101,12 +102,6 @@ Options:
         if (Options.ShowHelp)
             return ShowHelp();
 
-        if (Options.InputFiles.Count == 0)
-        {
-            Context.Diag.Emit(DiagnosticLevel.Error, "No source files provided.");
-            return 1;
-        }
-
         var languageOptions = new LanguageOptions();
         languageOptions.SetDefaults(Context, Options.Standards);
 
@@ -146,18 +141,53 @@ Options:
             var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
             var ppOutputWriter = new PreprocessedOutputWriter(outputWriter, Options.IncludeCommentsInPreprocessedOutput);
 
-            foreach (var (fileName, file) in Options.InputFiles)
+            SourceText sourceText;
+            SourceLanguage sourceLanguage = SourceLanguage.Laye;
+
+            if (Options.InputFiles is [(string fileName, FileInfo file)] && !Options.ReadFromStandardInput)
             {
-                var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-                var sourceLanguage = file.Extension is ".c" or ".h" ? SourceLanguage.C : SourceLanguage.Laye;
+                sourceText = new SourceText(fileName, file.ReadAllText());
 
-                var preprocessor = new Preprocessor(Context, languageOptions);
-                var tokens = preprocessor.PreprocessSource(source, sourceLanguage);
+                string fileExtension = file.Extension;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    fileExtension = fileExtension.ToLower();
 
-                if (Options.PrintTokens)
-                    tokens.ForEach(debugPrinter.PrintToken);
-                else tokens.ForEach(ppOutputWriter.WriteToken);
+                switch (fileExtension)
+                {
+                    case ".laye":
+                    {
+                        sourceLanguage = SourceLanguage.Laye;
+                    } break;
+
+                    case ".c" or ".h" or ".inc":
+                    {
+                        sourceLanguage = SourceLanguage.C;
+                    } break;
+
+                    default:
+                    {
+                        Context.Diag.Emit(DiagnosticLevel.Error, $"Unrecognized source file extension '{file.Extension}'.");
+                        Context.Diag.Emit(DiagnosticLevel.Note, "Use a recognized extension, or see the '-x' option in '--help'.");
+                        Context.Diag.Emit(DiagnosticLevel.Note, "Assuming this is a Laye source file.");
+                    } break;
+                }
             }
+            else if (Options.ReadFromStandardInput && Options.InputFiles.Count == 0)
+            {
+                sourceText = new SourceText("<stdin>", Console.In.ReadToEnd());
+            }
+            else
+            {
+                Context.Diag.Emit(DiagnosticLevel.Error, "Only a single input source file is allowed when preprocessing.");
+                return 1;
+            }
+
+            var preprocessor = new Preprocessor(Context, languageOptions);
+            var tokens = preprocessor.PreprocessSource(sourceText, sourceLanguage);
+
+            if (Options.PrintTokens)
+                tokens.ForEach(debugPrinter.PrintToken);
+            else tokens.ForEach(ppOutputWriter.WriteToken);
 
             return 0;
         }
@@ -171,6 +201,7 @@ public sealed class LayeCDriverCompilerOptions
     public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Default;
 
     public string? OutputFile { get; set; }
+    public bool ReadFromStandardInput { get; set; }
     public List<(string Name, FileInfo File)> InputFiles { get; set; } = [];
 
     public LanguageStandardKinds Standards { get; set; }
@@ -183,6 +214,12 @@ public sealed class LayeCDriverCompilerOptions
     protected override void Validate(DiagnosticEngine diag, BaseCompilerDriverParseState state)
     {
         base.Validate(diag, state);
+
+        if (ReadFromStandardInput && InputFiles.Count != 0)
+            diag.Emit(DiagnosticLevel.Error, "Cannot read from standard input while input files are also specified.");
+
+        if (!ReadFromStandardInput && InputFiles.Count == 0)
+            diag.Emit(DiagnosticLevel.Error, "No source files provided.");
     }
 
     protected override void Finalize(DiagnosticEngine diag, BaseCompilerDriverParseState state)
