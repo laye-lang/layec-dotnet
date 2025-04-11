@@ -10,7 +10,7 @@ public readonly struct KeywordStandardInfo(LanguageFeatures features, TokenKind 
 
 public static class SyntaxFacts
 {
-    private static readonly IReadOnlyDictionary<StringView, KeywordStandardInfo> _cKeywordInfos = new Dictionary<StringView, KeywordStandardInfo>()
+    private static readonly Dictionary<StringView, KeywordStandardInfo> _cKeywordInfos = new()
     {
         { "alignas", new(LanguageFeatures.C23, TokenKind.KWAlignas) },
         { "_Alignas", new(LanguageFeatures.C11, TokenKind.KWAlignas) },
@@ -74,7 +74,7 @@ public static class SyntaxFacts
         { "while", new(LanguageFeatures.None, TokenKind.KWWhile) },
     };
 
-    private static readonly IReadOnlyDictionary<StringView, KeywordStandardInfo> _layeKeywordInfos = new Dictionary<StringView, KeywordStandardInfo>()
+    private static readonly Dictionary<StringView, KeywordStandardInfo> _layeKeywordInfos = new()
     {
         { "alias", new(LanguageFeatures.None, TokenKind.KWAlias) },
         { "alignof", new(LanguageFeatures.None, TokenKind.KWAlignof) },
@@ -207,9 +207,7 @@ public static class SyntaxFacts
             or UnicodeCategory.LowercaseLetter
             or UnicodeCategory.TitlecaseLetter
             or UnicodeCategory.ModifierLetter
-            or UnicodeCategory.OtherLetter
-            or UnicodeCategory.OtherSymbol
-            or UnicodeCategory.Surrogate;
+            or UnicodeCategory.OtherLetter;
     }
 
     public static bool IsLayeIdentifierContinue(char c)
@@ -228,8 +226,6 @@ public static class SyntaxFacts
             or UnicodeCategory.SpacingCombiningMark
             or UnicodeCategory.DecimalDigitNumber
             or UnicodeCategory.ConnectorPunctuation
-            or UnicodeCategory.Format
-            or UnicodeCategory.OtherSymbol
-            or UnicodeCategory.Surrogate;
+            or UnicodeCategory.Format;
     }
 }

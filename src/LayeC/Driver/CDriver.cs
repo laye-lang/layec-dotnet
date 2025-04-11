@@ -39,11 +39,6 @@ public sealed class CDriver
 
     public override int Execute()
     {
-        foreach (var (fileName, file) in Options.InputFiles)
-        {
-            var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-        }
-
         return 0;
     }
 }

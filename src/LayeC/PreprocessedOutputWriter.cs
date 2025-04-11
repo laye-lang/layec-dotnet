@@ -1,5 +1,4 @@
 ﻿using LayeC.FrontEnd;
-using LayeC.Source;
 
 namespace LayeC;
 
@@ -7,8 +6,6 @@ public sealed class PreprocessedOutputWriter(TextWriter writer, bool includeComm
 {
     private readonly TextWriter _writer = writer;
     private readonly bool _includeComments = includeComments;
-
-    private bool _first = true;
 
     public void WriteToken(IEnumerable<Token> tokens)
     {
@@ -20,7 +17,6 @@ public sealed class PreprocessedOutputWriter(TextWriter writer, bool includeComm
     {
         TryPrintTrivia(token.LeadingTrivia);
 
-        _first = false;
         if (token.Kind == TokenKind.EndOfFile)
             return;
 

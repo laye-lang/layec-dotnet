@@ -33,6 +33,30 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
     }
 
+    private static Token StringizeTokens(IReadOnlyList<Token> tokens, Token hashToken)
+    {
+        var builder = new StringBuilder();
+
+        bool first = true;
+        foreach (var token in tokens)
+        {
+            if (first)
+                first = false;
+            else if (token.HasWhiteSpaceBefore)
+                builder.Append(' ');
+            builder.Append(StringizeToken(token, true));
+        }
+
+        string stringValue = builder.ToString();
+        return new Token(TokenKind.LiteralString, SourceLanguage.C, hashToken.Source, hashToken.Range)
+        {
+            Spelling = stringValue,
+            StringValue = stringValue,
+            LeadingTrivia = hashToken.LeadingTrivia,
+            HasWhiteSpaceBefore = hashToken.HasWhiteSpaceBefore,
+        };
+    }
+
     private CompilerContext Context { get; } = context;
     private LanguageOptions LanguageOptions { get; } = languageOptions;
 
@@ -254,11 +278,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
 
             var directiveToken = ReadTokenRaw();
-            using (var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
-            {
-                DispatchDirectiveParser(SourceLanguage.C, directiveToken);
-            }
-
+            using var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective);
+            DispatchDirectiveParser(SourceLanguage.C, directiveToken);
             return null;
         }
 
@@ -281,10 +302,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
             else
             {
-                using (var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
-                {
-                    DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
-                }
+                using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
+                DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
             }
 
             return null;
@@ -315,7 +334,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             if (directiveToken.Kind is not (TokenKind.CPPIdentifier or TokenKind.Identifier))
             {
                 Context.ErrorExpectedPreprocessorDirective(directiveToken.Source, directiveToken.Location);
-                SkipRemainingDirectiveTokens();
+                SkipRemainingDirectiveTokens(directiveToken);
             }
             else HandleDirective(language, ppToken, directiveToken);
         }
@@ -479,7 +498,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 token.HasWhiteSpaceBefore = true;
             }
 
-            Expansion.Add(token);
+            Expansion.Add(token.Clone());
         }
 
         public void Append(Preprocessor pp, IEnumerable<Token> tokens, Token expandedFromToken)
@@ -554,7 +573,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (ppToken.DisableExpansion)
             return false;
 
-        var macroDef = GetExpandableMacroAndArguments(ppToken.StringValue, out var arguments);
+        var leadingTrivia = ppToken.LeadingTrivia;
+        var macroDef = GetExpandableMacroAndArguments(ppToken.StringValue, out var arguments, out var trailingTrivia);
         if (macroDef is null || macroDef.IsExpanding)
             return false;
 
@@ -706,7 +726,13 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     (expansion.Cursor >= 2 && expansion.MacroDefinition.Tokens[expansion.Cursor - 2].Kind == TokenKind.HashHash)
                 )
                 {
-                    var paramTokens = expansion.Arguments[expansion.GetParamIndex(token)];
+                    var paramTokens = expansion.Arguments[expansion.GetParamIndex(token)].Select(t => t.Clone()).ToArray();
+                    if (paramTokens.Length > 0)
+                    {
+                        paramTokens[0].LeadingTrivia = token.LeadingTrivia;
+                        paramTokens[^1].TrailingTrivia = token.TrailingTrivia;
+                    }
+
                     expansion.Append(this, paramTokens, token);
                 }
                 else
@@ -714,12 +740,18 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     // Finally, if we get here, we have a parameter and there is no paste in sight.
                     // in this case, the standard requires that we fully expand it before appending
                     // it to the expansion (this does not happen for operands of '#' or '##').
-                    var paramTokens = Substitute(expansion, expansion.GetParamIndex(token));
+                    var paramTokens = Substitute(expansion, expansion.GetParamIndex(token)).Select(t => t.Clone()).ToArray();
+                    if (paramTokens.Length > 0)
+                    {
+                        paramTokens[0].LeadingTrivia = token.LeadingTrivia;
+                        paramTokens[^1].TrailingTrivia = token.TrailingTrivia;
+                    }
+
                     expansion.Append(this, paramTokens, token);
                 }
             }
 
-            PrepareExpansion(expansion);
+            PrepareExpansion(expansion, leadingTrivia, trailingTrivia);
         }
         else
         {
@@ -747,18 +779,19 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     else expansion.Append(this, token);
                 }
             }
-            else expansion.Expansion.AddRange(macroDef.Tokens);
+            else expansion.Expansion.AddRange(macroDef.Tokens.Select(t => t.Clone()));
 
-            PrepareExpansion(expansion);
+            PrepareExpansion(expansion, leadingTrivia, trailingTrivia);
         }
 
         return true;
 
-        PreprocessorMacroDefinition? GetExpandableMacroAndArguments(StringView name, out Token[][] args)
+        PreprocessorMacroDefinition? GetExpandableMacroAndArguments(StringView name, out Token[][] args, out TriviaList trailingTrivia)
         {
 #pragma warning disable IDE0301 // Simplify collection initialization
             args = Array.Empty<Token[]>();
 #pragma warning restore IDE0301 // Simplify collection initialization
+            trailingTrivia = ppToken.TrailingTrivia;
 
             var macroDef = GetExpandableMacro(name);
             if (macroDef is null or { IsFunctionLike: false })
@@ -829,11 +862,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 parsedArguments.Add([]);
             }
 
+            trailingTrivia = token.TrailingTrivia;
             args = [.. parsedArguments.Select(list => list.ToArray())];
             return macroDef;
         }
 
-        void PrepareExpansion(MacroExpansion expansion)
+        void PrepareExpansion(MacroExpansion expansion, TriviaList leadingTrivia, TriviaList trailingTrivia)
         {
             if (expansion.Expansion.Count == 0) return;
 
@@ -846,7 +880,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     new Token(TokenKind.KWPragma, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
                     {
                         Spelling = "pragma",
-                        LeadingTrivia = expansion.SourceToken.LeadingTrivia,
+                        LeadingTrivia = leadingTrivia,
                         TrailingTrivia = new([new TriviumLiteral(" ")], false),
                     },
                     new Token(TokenKind.LiteralString, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
@@ -868,7 +902,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     new Token(TokenKind.CloseParen, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
                     {
                         Spelling = ")",
-                        TrailingTrivia = expansion.SourceToken.TrailingTrivia,
+                        TrailingTrivia = trailingTrivia,
                         HasWhiteSpaceBefore = true,
                     }
                 ];
@@ -884,8 +918,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
             else
             {
-                expansion.Expansion[0].LeadingTrivia = expansion.SourceToken.LeadingTrivia;
-                expansion.Expansion[^1].TrailingTrivia = expansion.SourceToken.TrailingTrivia;
+                expansion.Expansion[0].LeadingTrivia = leadingTrivia;
+                expansion.Expansion[^1].TrailingTrivia = trailingTrivia;
                 PushTokenStream(tokenStream);
             }
         }
@@ -906,30 +940,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         var paramTokens = expansion.Arguments[expansion.GetParamIndex(paramToken)];
         return StringizeTokens(paramTokens, hashToken);
-    }
-
-    private Token StringizeTokens(IReadOnlyList<Token> tokens, Token hashToken)
-    {
-        var builder = new StringBuilder();
-
-        bool first = true;
-        foreach (var token in tokens)
-        {
-            if (first)
-                first = false;
-            else if (token.HasWhiteSpaceBefore)
-                builder.Append(' ');
-            builder.Append(StringizeToken(token, true));
-        }
-
-        string stringValue = builder.ToString();
-        return new Token(TokenKind.LiteralString, SourceLanguage.C, hashToken.Source, hashToken.Range)
-        {
-            Spelling = stringValue,
-            StringValue = stringValue,
-            LeadingTrivia = hashToken.LeadingTrivia,
-            HasWhiteSpaceBefore = hashToken.HasWhiteSpaceBefore,
-        };
     }
 
     private void Paste(MacroExpansion expansion, Token hashHashToken, Token rightToken)
@@ -991,8 +1001,11 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         return ppToken;
     }
 
-    private bool SkipRemainingDirectiveTokens()
+    private bool SkipRemainingDirectiveTokens(Token? currentToken)
     {
+        if (currentToken is { Kind: TokenKind.CPPDirectiveEnd or TokenKind.EndOfFile })
+            return false;
+
         bool hasSkippedAnyTokens = false;
         while (true)
         {
@@ -1012,13 +1025,15 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         var directiveName = directiveToken.StringValue;
         if (directiveName == "define")
-            HandleDefineDirective(preprocessorToken, directiveToken);
+            HandleDefineDirective();
+        else if (directiveName == "undef")
+            HandleUndefDirective();
         else if (directiveName == "include")
             HandleIncludeDirective(language, preprocessorToken, directiveToken);
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
-            SkipRemainingDirectiveTokens();
+            SkipRemainingDirectiveTokens(directiveToken);
         }
     }
 
@@ -1034,13 +1049,13 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         public bool RequiresPasting { get; set; }
     }
 
-    private void HandleDefineDirective(Token preprocessorToken, Token directiveToken)
+    private void HandleDefineDirective()
     {
         var macroNameToken = ReadTokenRaw();
         if (macroNameToken.Kind != TokenKind.CPPIdentifier)
         {
             Context.ErrorExpectedMacroName(macroNameToken.Source, macroNameToken.Location);
-            SkipRemainingDirectiveTokens();
+            SkipRemainingDirectiveTokens(macroNameToken);
             return;
         }
 
@@ -1133,6 +1148,20 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         };
     }
 
+    private void HandleUndefDirective()
+    {
+        var macroNameToken = ReadTokenRaw();
+        if (macroNameToken.Kind != TokenKind.CPPIdentifier)
+        {
+            Context.ErrorExpectedMacroName(macroNameToken.Source, macroNameToken.Location);
+            SkipRemainingDirectiveTokens(macroNameToken);
+            return;
+        }
+
+        _macroDefs.Remove(macroNameToken.StringValue);
+        SkipRemainingDirectiveTokens(null);
+    }
+
     private void HandleIncludeDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
     {
         var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
@@ -1141,7 +1170,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         using (var _ = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPHasHeaderNames))
             includePathToken = ReadTokenRaw();
 
-        if (SkipRemainingDirectiveTokens())
+        if (SkipRemainingDirectiveTokens(includePathToken))
             Context.WarningExtraTokensAtEndOfDirective(directiveToken);
 
         if (includePathToken.Kind is not (TokenKind.LiteralString or TokenKind.CPPHeaderName))

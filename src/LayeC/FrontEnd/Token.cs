@@ -52,4 +52,21 @@ public sealed class Token(TokenKind kind, SourceLanguage language, SourceText so
                 yield return TrailingTrivia;
         }
     }
+
+    public Token Clone()
+    {
+        return new Token(Kind, Language, Source, Range)
+        {
+            _overrideSpelling = _overrideSpelling,
+            IsAtStartOfLine = IsAtStartOfLine,
+            HasWhiteSpaceBefore = HasWhiteSpaceBefore,
+            LeadingTrivia = LeadingTrivia.Clone(),
+            TrailingTrivia = TrailingTrivia.Clone(),
+            StringValue = StringValue,
+            IntegerValue = IntegerValue,
+            FloatValue = FloatValue,
+            DisableExpansion = DisableExpansion,
+            CPPIntegerData = CPPIntegerData,
+        };
+    }
 }

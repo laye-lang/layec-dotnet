@@ -48,7 +48,7 @@ public readonly struct Trilean(TriState state = TriState.Unknown)
     public static implicit operator Trilean(bool b) => new(b ? TriState.True : TriState.False);
     public static implicit operator Trilean(bool? b) => new(b is null ? TriState.Unknown : b.Value ? TriState.True : TriState.False);
     public static explicit operator bool(Trilean trilean) => trilean.State == TriState.True;
-    public static explicit operator bool(Trilean? trilean) => trilean is { State: { } state } ? state == TriState.True : false;
+    public static explicit operator bool(Trilean? trilean) => trilean is { State: { } state } && state == TriState.True;
     public static explicit operator bool?(Trilean trilean) => trilean.State == TriState.Unknown ? null : trilean.State == TriState.True;
 
     public static Trilean operator ~(Trilean self) => new(self.State.Not());

@@ -27,6 +27,14 @@ public sealed class TriviaList(IEnumerable<Trivium> trivia, bool isLeading)
 
     string ITreeDebugNode.DebugNodeName { get; } = nameof(TriviaList);
     IEnumerable<ITreeDebugNode> ITreeDebugNode.Children { get; } = [.. trivia];
+
+    public TriviaList Clone()
+    {
+        if (Trivia.Count == 0)
+            return IsLeading ? EmptyLeading : EmptyTrailing;
+
+        return new TriviaList(Trivia, IsLeading);
+    }
 }
 
 public sealed class TriviumLiteral(StringView literal)
