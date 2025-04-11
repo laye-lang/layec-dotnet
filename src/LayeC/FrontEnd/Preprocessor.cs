@@ -279,10 +279,13 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private Token ReadAndExpandToken()
     {
-        var ppToken = ReadTokenRaw();
-        if (Preprocess(ppToken) is { } preprocessedToken)
-            return preprocessedToken;
-        else return ReadAndExpandToken();
+        // eliminate recursion at all costs
+        while (true)
+        {
+            var ppToken = ReadTokenRaw();
+            if (Preprocess(ppToken) is { } preprocessedToken)
+                return preprocessedToken;
+        }
     }
 
     private Token ReadTokenRaw()
@@ -731,7 +734,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
                     if (expansion.VAOptState.Stringize)
                     {
-                        var tokens = expansion.Expansion[expansion.VAOptState.StartOfExpansion..(expansion.Expansion.Count - expansion.VAOptState.StartOfExpansion)];
+                        var tokens = expansion.Expansion[expansion.VAOptState.StartOfExpansion..expansion.Expansion.Count];
                         var stringizedToken = StringizeTokens(tokens, expansion.VAOptState.StringizeToken);
                         expansion.Expansion.RemoveRange(expansion.VAOptState.StartOfExpansion, expansion.Expansion.Count - expansion.VAOptState.StartOfExpansion);
                         expansion.PasteBefore = expansion.VAOptState.PasteTokens;
