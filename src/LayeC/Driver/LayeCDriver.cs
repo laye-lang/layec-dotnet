@@ -29,6 +29,13 @@ public sealed class LayeCDriver
     }
 }
 
+public abstract class LayeCSharedDriverOptions<TSelf, TParseState>
+    : BaseCompilerDriverOptions<TSelf, TParseState>
+    where TSelf : LayeCSharedDriverOptions<TSelf, TParseState>, new()
+    where TParseState : BaseCompilerDriverParseState, new()
+{
+}
+
 public abstract class LayeCSharedDriverOptions<TSelf>
     : BaseCompilerDriverOptions<TSelf, BaseCompilerDriverParseState>
     where TSelf : LayeCSharedDriverOptions<TSelf>, new()

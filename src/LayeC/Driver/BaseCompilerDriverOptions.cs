@@ -99,9 +99,12 @@ public abstract class BaseCompilerDriverOptions<TSelf, TParseState>
         var options = new TSelf();
         var state = new TParseState();
 
+        bool valuesOnly = false;
         while (args.Shift(out string arg))
         {
-            if (arg.StartsWith('-'))
+            if (!valuesOnly && arg == "--")
+                valuesOnly = true;
+            else if (!valuesOnly && arg.StartsWith('-'))
                 options.HandleArgument(arg, diag, args, state);
             else options.HandleValue(arg, diag, args, state);
         }

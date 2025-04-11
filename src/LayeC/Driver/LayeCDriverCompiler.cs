@@ -44,7 +44,7 @@ Options:
                              one of: 'auto', 'always', 'never'
 
     -i                       Read source text from stdin rather than a list of source files.
-    --file-kind <kind>, -x <kind>
+    --language <kind>, -x <kind>
                              Specify the kind of subsequent input files, or 'default' to infer it from the extension.
                              one of: 'default', 'laye', 'c', 'module'
     -o <path>                Override the output module object file path.
@@ -144,36 +144,40 @@ Options:
             SourceText sourceText;
             SourceLanguage sourceLanguage = SourceLanguage.Laye;
 
-            if (Options.InputFiles is [(string fileName, FileInfo file)] && !Options.ReadFromStandardInput)
+            // TODO(local): I think we want to pre-load all the text as a step in argument validation so we don't repeat this logic.
+            if (Options.InputFiles is [{ } singleFile] && !Options.ReadFromStandardInput)
             {
-                sourceText = new SourceText(fileName, file.ReadAllText());
-
-                string fileExtension = file.Extension;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    fileExtension = fileExtension.ToLower();
-
-                switch (fileExtension)
+                if (!singleFile.Kind.CanPreprocess())
                 {
-                    case ".laye":
-                    {
-                        sourceLanguage = SourceLanguage.Laye;
-                    } break;
-
-                    case ".c" or ".h" or ".inc":
-                    {
-                        sourceLanguage = SourceLanguage.C;
-                    } break;
-
-                    default:
-                    {
-                        Context.Diag.Emit(DiagnosticLevel.Error, $"Unrecognized source file extension '{file.Extension}'.");
-                        Context.Diag.Emit(DiagnosticLevel.Note, "Use a recognized extension, or see the '-x' option in '--help'.");
-                        Context.Diag.Emit(DiagnosticLevel.Note, "Assuming this is a Laye source file.");
-                    } break;
+                    Context.Diag.Emit(DiagnosticLevel.Error, "Can't preprocess this input.");
+                    return 1;
                 }
+
+                sourceLanguage = singleFile.Kind.SourceLanguage();
+                if (sourceLanguage == SourceLanguage.None)
+                {
+                    Context.Diag.Emit(DiagnosticLevel.Error, "Can't preprocess a non-source input.");
+                    return 1;
+                }
+
+                sourceText = new SourceText(singleFile.InputName, singleFile.FileInfo.ReadAllText());
             }
             else if (Options.ReadFromStandardInput && Options.InputFiles.Count == 0)
             {
+                if (Options.StandardInputKind != InputFileKind.Unknown && !Options.StandardInputKind.CanPreprocess())
+                {
+                    Context.Diag.Emit(DiagnosticLevel.Error, "Can't preprocess this input.");
+                    return 1;
+                }
+
+                sourceLanguage = Options.StandardInputKind.SourceLanguage();
+                if (sourceLanguage == SourceLanguage.None && Options.StandardInputKind != InputFileKind.Unknown)
+                {
+                    Context.Diag.Emit(DiagnosticLevel.Error, "Can't preprocess a non-source input.");
+                    return 1;
+                }
+                else sourceLanguage = SourceLanguage.Laye;
+
                 sourceText = new SourceText("<stdin>", Console.In.ReadToEnd());
             }
             else
@@ -185,6 +189,9 @@ Options:
             var preprocessor = new Preprocessor(Context, languageOptions);
             var tokens = preprocessor.PreprocessSource(sourceText, sourceLanguage);
 
+            if (Context.Diag.HasEmittedErrors)
+                return 1;
+
             if (Options.PrintTokens)
                 tokens.ForEach(debugPrinter.PrintToken);
             else tokens.ForEach(ppOutputWriter.WriteToken);
@@ -194,24 +201,38 @@ Options:
     }
 }
 
+public sealed class LayeCInputFile
+{
+    public required InputFileKind Kind { get; init; }
+    public required string InputName { get; init; }
+    public required FileInfo FileInfo { get; init; }
+}
+
+public record class LayeCDriverCompilerOptionsParseState
+    : BaseCompilerDriverParseState
+{
+    public InputFileKind InputFileKind { get; set; } = InputFileKind.Unknown;
+}
+
 public sealed class LayeCDriverCompilerOptions
-    : LayeCSharedDriverOptions<LayeCDriverCompilerOptions>
+    : LayeCSharedDriverOptions<LayeCDriverCompilerOptions, LayeCDriverCompilerOptionsParseState>
 {
     public DriverStage DriverStage { get; set; } = DriverStage.Assemble;
     public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Default;
 
-    public string? OutputFile { get; set; }
-    public bool ReadFromStandardInput { get; set; }
-    public List<(string Name, FileInfo File)> InputFiles { get; set; } = [];
+    public string? OutputFile { get; set; } = null;
+    public bool ReadFromStandardInput { get; set; } = false;
+    public InputFileKind StandardInputKind { get; set; } = InputFileKind.Unknown;
+    public List<LayeCInputFile> InputFiles { get; set; } = [];
 
     public LanguageStandardKinds Standards { get; set; }
 
     public IncludePaths IncludePaths { get; set; } = new();
 
-    public bool PrintTokens { get; set; }
-    public bool IncludeCommentsInPreprocessedOutput { get; set; }
+    public bool PrintTokens { get; set; } = false;
+    public bool IncludeCommentsInPreprocessedOutput { get; set; } = false;
 
-    protected override void Validate(DiagnosticEngine diag, BaseCompilerDriverParseState state)
+    protected override void Validate(DiagnosticEngine diag, LayeCDriverCompilerOptionsParseState state)
     {
         base.Validate(diag, state);
 
@@ -222,21 +243,46 @@ public sealed class LayeCDriverCompilerOptions
             diag.Emit(DiagnosticLevel.Error, "No source files provided.");
     }
 
-    protected override void Finalize(DiagnosticEngine diag, BaseCompilerDriverParseState state)
+    protected override void Finalize(DiagnosticEngine diag, LayeCDriverCompilerOptionsParseState state)
     {
         base.Finalize(diag, state);
     }
 
-    protected override void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, BaseCompilerDriverParseState state)
+    protected override void HandleValue(string value, DiagnosticEngine diag, CliArgumentIterator args, LayeCDriverCompilerOptionsParseState state)
     {
-        var inputFile = new FileInfo(value);
-        if (!inputFile.Exists)
+        var fileInfo = new FileInfo(value);
+        if (!fileInfo.Exists)
             diag.Emit(DiagnosticLevel.Error, $"No such file or directory '{value}'.");
 
-        InputFiles.Add((value, inputFile));
+        var inputKind = state.InputFileKind;
+
+        string fileExtension = fileInfo.Extension;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            fileExtension = fileExtension.ToLower();
+
+        switch (fileExtension)
+        {
+            case ".laye": inputKind = InputFileKind.LayeSource; break;
+            case ".c": inputKind = InputFileKind.CSource; break;
+            case ".h" or ".inc": inputKind = InputFileKind.CHeader; break;
+
+            default:
+            {
+                diag.Emit(DiagnosticLevel.Error, $"Unrecognized input file extension '{fileInfo.Extension}'.");
+                diag.Emit(DiagnosticLevel.Note, "Use a recognized extension, or see the '-x' option in '--help'.");
+                diag.Emit(DiagnosticLevel.Note, "Assuming this is a Laye source file.");
+            } break;
+        }
+
+        InputFiles.Add(new LayeCInputFile()
+        {
+            Kind = inputKind,
+            InputName = value,
+            FileInfo = fileInfo,
+        });
     }
 
-    protected override void HandleArgument(string arg, DiagnosticEngine diag, CliArgumentIterator args, BaseCompilerDriverParseState state)
+    protected override void HandleArgument(string arg, DiagnosticEngine diag, CliArgumentIterator args, LayeCDriverCompilerOptionsParseState state)
     {
         switch (arg)
         {

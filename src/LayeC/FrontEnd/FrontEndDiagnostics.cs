@@ -35,6 +35,9 @@ public static class FrontEndDiagnostics
     public static void ExtVAOpt(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], $"'{KW("__VA_OPT__")}' is a C23 extension.");
 
+    public static void ExtZeroVAArgs(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], $"Passing 0 variadic arguments to a function-like macro is a C23 extension.");
+
     #endregion
 
     #region 2XXX - Lexical Diagnostics
@@ -132,6 +135,15 @@ public static class FrontEndDiagnostics
 
     public static void ErrorConcatentationCannotResultInComment(this CompilerContext context, Token hashHashToken) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3021", hashHashToken.Source, hashHashToken.Location, [], "Concatenation cannot result in a comment.");
+
+    public static void ErrorIncorrectArgumentCountForFunctionLikeMacro(this CompilerContext context, Token sourceToken, Token macroNameToken, bool isTooFew)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3022", sourceToken.Source, sourceToken.Location, [], $"Too {(isTooFew ? "few" : "many")} arguments to function-like macro.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "3022", macroNameToken.Source, macroNameToken.Location, [], $"Macro '{macroNameToken.StringValue}' defined here.");
+    }
+
+    public static void ErrorCanOnlyStringizeParameters(this CompilerContext context, Token token, Token hashToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3021", hashToken.Source, hashToken.Location, [token.Range], "'#' must be followed by a parameter name or '__VA_ARGS__'.");
 
     #endregion
 

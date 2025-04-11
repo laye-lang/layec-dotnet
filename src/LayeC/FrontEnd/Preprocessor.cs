@@ -1,16 +1,15 @@
 ﻿using System.Diagnostics;
-using System.Diagnostics.Metrics;
-using System.Linq;
-using System.Threading;
+using System.Text;
 
 using LayeC.Diagnostics;
 using LayeC.Source;
 
 namespace LayeC.FrontEnd;
 
-public sealed class PreprocessorMacroDefinition(StringView name, IEnumerable<Token> tokens, IEnumerable<StringView> parameterNames)
+public sealed class PreprocessorMacroDefinition(Token nameToken, IEnumerable<Token> tokens, IEnumerable<StringView> parameterNames)
 {
-    public StringView Name { get; } = name;
+    public Token NameToken { get; } = nameToken;
+    public StringView Name => NameToken.StringValue;
     public IReadOnlyList<Token> Tokens { get; } = [.. tokens];
     public IReadOnlyList<StringView> ParameterNames { get; } = [.. parameterNames];
 
@@ -46,6 +45,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         while (_tokenStreams.Count > 0)
         {
             var token = ReadToken();
+            // TODO(local): concat adjacent string literals in C
             tokens.Add(token);
 
             if (token.Kind == TokenKind.EndOfFile)
@@ -69,16 +69,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
     private bool _withinExpressionPragmaC = false;
     private bool IsInLexer => _peekedRawToken is null && _tokenStreams.TryPeek(out var ts) && ts is LexerTokenStream;
     private bool ArePreprocessorDirectivesAllowed => !_withinExpressionPragmaC && IsInLexer;
-
-    private SourceText Source
-    {
-        get
-        {
-            if (_peekedRawToken is { } p)
-                return p.Source;
-            return _tokenStreams.TryPeek(out var ts) ? ts.Source : SourceText.Unknown;
-        }
-    }
 
     private SourceLanguage Language
     {
@@ -310,8 +300,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (ppToken.Kind == TokenKind.CPPIdentifier && MaybeExpandMacro(ppToken))
             return null;
 
-        // TODO(local): concat adjacent string literals in C?
-
         return ppToken;
 
         void DispatchDirectiveParser(SourceLanguage language, Token directiveToken)
@@ -417,12 +405,30 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         public int StartOfExpansion { get; set; }
         public int Index { get; set; } = -1;
         public int CloseParenIndex { get; set; }
-        public SourceLocation StringizeLocation { get; set; }
-        public bool StringiZe { get; set; }
-        public bool StringizeWhitespaceBefore { get; set; }
+        public bool Stringize { get; set; }
+        public Token StringizeToken { get; set; } = Token.AnyEndOfFile;
         public bool PasteTokens { get; set; }
         public bool EndsWithPlacemarker { get; set; }
         public bool DidPaste { get; set; }
+
+        public void Reset()
+        {
+            StartOfExpansion = 0;
+            Index = -1;
+            CloseParenIndex = 0;
+            StringizeToken = Token.AnyEndOfFile;
+            Stringize = false;
+            PasteTokens = false;
+            EndsWithPlacemarker = false;
+            DidPaste = false;
+        }
+
+        public void DeferStringize(Token hashToken)
+        {
+            Debug.Assert(!Stringize);
+            Stringize = true;
+            StringizeToken = hashToken;
+        }
     }
 
     private sealed class MacroExpansion
@@ -430,17 +436,115 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         public required PreprocessorMacroDefinition MacroDefinition { get; init; }
         public required Token SourceToken { get; init; }
 
-        public List<List<Token>> Arguments { get; } = [];
-        public List<List<Token>> ExpandedArguments { get; } = [];
+        public Token[][] Arguments { get; init; } = [];
+        public List<Token>?[]? ExpandedArguments { get; set; }
 
         public List<Token> Expansion { get; } = [];
         public int Cursor { get; set; }
         public Token MacroPPTokenAtCursor => MacroDefinition.Tokens[Cursor];
 
         public VAOptState VAOptState { get; } = new();
+        public bool InVAOpt => VAOptState.Index >= 0;
 
         public bool InsertWhiteSpace { get; set; }
         public bool PasteBefore { get; set; }
+
+        public int GetParamIndex(Token token)
+        {
+            Debug.Assert(token.Kind is TokenKind.CPPMacroParam or TokenKind.CPPVAArgs);
+            if (token.Kind == TokenKind.CPPVAArgs)
+                return MacroDefinition.ParameterNames.Count;
+            Debug.Assert(MacroDefinition.ParameterNames.Any(n => n == token.StringValue));
+            return MacroDefinition.ParameterNames.Index().First(pair => pair.Item == token.StringValue).Index;
+        }
+
+        public bool HasVariadicArguments(Preprocessor pp)
+        {
+            IReadOnlyList<Token> param = pp.Substitute(this, MacroDefinition.ParameterNames.Count);
+            return param.Count != 0;
+        }
+
+        public void Append(Preprocessor pp, Token token)
+        {
+            if (PasteBefore)
+            {
+                PasteBefore = false;
+                pp.Paste(this, token, token);
+                return;
+            }
+
+            if (InsertWhiteSpace)
+            {
+                InsertWhiteSpace = false;
+                token.HasWhiteSpaceBefore = true;
+            }
+
+            Expansion.Add(token);
+        }
+
+        public void Append(Preprocessor pp, IEnumerable<Token> tokens, Token expandedFromToken)
+        {
+            if (expandedFromToken.HasWhiteSpaceBefore)
+                InsertWhiteSpace = true;
+
+            if (!tokens.Any())
+                Placemarker();
+            else
+            {
+                foreach (var token in tokens)
+                    Append(pp, token);
+            }
+        }
+
+        public void Placemarker()
+        {
+            if (PasteBefore)
+                PasteBefore = false;
+            else if (Cursor < MacroDefinition.Tokens.Count && MacroPPTokenAtCursor.Kind == TokenKind.HashHash)
+                Cursor++;
+            else if (InVAOpt && Cursor == VAOptState.CloseParenIndex)
+                VAOptState.EndsWithPlacemarker = true;
+        }
+    }
+
+    private IReadOnlyList<Token> Substitute(MacroExpansion expansion, int parameterIndex)
+    {
+        // p4: 'the replacement preprocessing tokens are the preprocessing tokens
+        // of the corresponding argument after all macros contained therein have been
+        // expanded.'
+
+        var argTokens = expansion.Arguments[parameterIndex];
+        if (!argTokens.Any(t => t.Kind == TokenKind.CPPIdentifier && GetExpandableMacro(t.StringValue) is not null))
+            return argTokens;
+
+        expansion.ExpandedArguments ??= new List<Token>?[expansion.MacroDefinition.ParameterNames.Count + (expansion.MacroDefinition.IsVariadic ? 1 : 0)];
+        var expandedArgs = expansion.ExpandedArguments[parameterIndex];
+        if (expandedArgs is not null)
+            return expandedArgs;
+
+        expansion.ExpandedArguments[parameterIndex] = expandedArgs = [];
+
+        // p4: 'The argument’s preprocessing tokens are completely macro replaced before
+        // being substituted as if they formed the rest of the preprocessing file with no
+        // other preprocessing tokens being available.'
+        PushTokenStream(new BufferTokenStream([.. argTokens]) { KeepWhenEmpty = true });
+        while (true)
+        {
+            var token = ReadAndExpandToken();
+            if (token.Kind == TokenKind.EndOfFile)
+                break;
+            expandedArgs.Add(token);
+        }
+
+        PopTokenStream();
+        return expandedArgs;
+    }
+
+    private PreprocessorMacroDefinition? GetExpandableMacro(StringView name)
+    {
+        if (_macroDefs.TryGetValue(name, out var def) && !def.IsExpanding)
+            return def;
+        else return null;
     }
 
     private bool MaybeExpandMacro(Token ppToken)
@@ -456,7 +560,166 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         if (macroDef.IsFunctionLike)
         {
-            Context.Todo("Function-like macro expansion.");
+            if (macroDef.Tokens.Count == 0)
+                return true;
+
+            Context.Assert(arguments.Length >= 0, "Should always be at least one argument list.");
+
+            bool tryToExpand = true;
+            if (!macroDef.IsVariadic)
+            {
+                if (arguments.Length != macroDef.ParameterNames.Count)
+                {
+                    Context.ErrorIncorrectArgumentCountForFunctionLikeMacro(ppToken, macroDef.NameToken, isTooFew: arguments.Length < macroDef.ParameterNames.Count);
+                    tryToExpand = false;
+                }
+            }
+            else
+            {
+                if (arguments.Length < macroDef.ParameterNames.Count)
+                {
+                    Context.ErrorIncorrectArgumentCountForFunctionLikeMacro(ppToken, macroDef.NameToken, isTooFew: true);
+                    tryToExpand = false;
+                }
+                else if (arguments.Length == macroDef.ParameterNames.Count && !LanguageOptions.CIsC23)
+                {
+                    Context.ExtZeroVAArgs(ppToken.Source, ppToken.Location);
+                    tryToExpand = false;
+                }
+            }
+
+            // should have generated an error; we parsed all the necessary tokens, but won't be able to reliably expand this.
+            if (!tryToExpand)
+                return true;
+
+            var expansion = new MacroExpansion()
+            {
+                MacroDefinition = macroDef,
+                SourceToken = ppToken,
+                Arguments = arguments,
+            };
+
+            while (expansion.Cursor < macroDef.Tokens.Count)
+            {
+                var token = expansion.MacroPPTokenAtCursor;
+
+                // Skip '__VA_OPT__(' and mark that we're inside of __VA_OPT__.
+                if (token.Kind == TokenKind.CPPVAOpt)
+                {
+                    expansion.VAOptState.Index = expansion.Cursor;
+                    expansion.VAOptState.CloseParenIndex = token.VAOptCloseParenIndex;
+                    expansion.VAOptState.StartOfExpansion = expansion.Expansion.Count;
+                    expansion.Cursor++; // yeet '__VA_OPT__'
+                    expansion.Cursor++; // yeet '('
+
+                    // If __VA_ARGS__ expands to nothing, discard everything up
+                    // to, but NOT including, the closing rparen.
+                    if (!expansion.HasVariadicArguments(this))
+                    {
+                        while (expansion.Cursor < expansion.VAOptState.CloseParenIndex)
+                            expansion.Cursor++;
+
+                        expansion.VAOptState.EndsWithPlacemarker = true;
+                    }
+
+                    token = expansion.MacroPPTokenAtCursor;
+                }
+
+                if (expansion.InVAOpt && expansion.Cursor == expansion.VAOptState.CloseParenIndex)
+                {
+                    expansion.Cursor++;
+                    Context.Assert(!expansion.VAOptState.PasteTokens || expansion.VAOptState.Stringize, "Only paste tokens here if we're also stringizing.");
+
+                    if (expansion.VAOptState.Stringize)
+                    {
+                        var tokens = expansion.Expansion[expansion.VAOptState.StartOfExpansion..(expansion.Expansion.Count - expansion.VAOptState.StartOfExpansion)];
+                        var stringizedToken = StringizeTokens(tokens, expansion.VAOptState.StringizeToken);
+                        expansion.Expansion.RemoveRange(expansion.VAOptState.StartOfExpansion, expansion.Expansion.Count - expansion.VAOptState.StartOfExpansion);
+                        expansion.PasteBefore = expansion.VAOptState.PasteTokens;
+                        expansion.Append(this, stringizedToken);
+                    }
+                    else
+                    {
+                        bool expandsToNothing = expansion.Expansion.Count == expansion.VAOptState.StartOfExpansion && !expansion.VAOptState.DidPaste;
+                        if (expansion.VAOptState.EndsWithPlacemarker || expandsToNothing)
+                            expansion.Placemarker();
+                    }
+
+                    expansion.VAOptState.Reset();
+                    continue;
+                }
+
+                if (token.Kind == TokenKind.Hash)
+                {
+                    var hashToken = token;
+                    expansion.Cursor++;
+                    token = expansion.MacroPPTokenAtCursor;
+
+                    if (token.Kind == TokenKind.CPPVAOpt)
+                    {
+                        expansion.VAOptState.PasteTokens = expansion.PasteBefore;
+                        expansion.PasteBefore = false;
+                        expansion.VAOptState.DeferStringize(hashToken);
+                        continue;
+                    }
+
+                    expansion.Cursor++; // yeet (what should be a) parameter
+                    expansion.Append(this, StringizeParameter(expansion, token, hashToken));
+
+                    continue;
+                }
+
+                if (token.Kind == TokenKind.HashHash)
+                {
+                    // we will have already diagnosed '####' so we should not perform anything here
+                    if (!expansion.PasteBefore)
+                    {
+                        expansion.Cursor++;
+                        expansion.PasteBefore = true;
+                    }
+
+                    continue;
+                }
+
+                if (token.Kind is not (TokenKind.CPPMacroParam or TokenKind.CPPVAArgs))
+                {
+                    expansion.Cursor++;
+                    expansion.Append(this, token);
+                    continue;
+                }
+
+                // non-__VA_OPT__ parameter
+                expansion.Cursor++;
+
+                // If the next token is '##', we must check for placemarkers here, and in any
+                // case, we need to append the argument tokens as-is.
+                //
+                // Similarly, if the *previous* token was '##', we need to insert the tokens
+                // without expansion here. This can happen if e.g. 'A' in 'A##B' was empty. Note
+                // that we can’t get here if 'B' was pasted since we would have already skipped
+                // over it in that case. We’ve already skipped the parameter so look back 2 tokens.
+                //
+                // Note that the 'paste_before' flag is irrelevant here since it is set for both
+                // 'A##B' and 'A##__VA_OPT__(B)', but only the former case should be handled here.
+                if (
+                    (expansion.Cursor < expansion.MacroDefinition.Tokens.Count && expansion.MacroPPTokenAtCursor.Kind == TokenKind.HashHash) ||
+                    (expansion.Cursor >= 2 && expansion.MacroDefinition.Tokens[expansion.Cursor - 2].Kind == TokenKind.HashHash)
+                )
+                {
+                    var paramTokens = expansion.Arguments[expansion.GetParamIndex(token)];
+                    expansion.Append(this, paramTokens, token);
+                }
+                else
+                {
+                    // Finally, if we get here, we have a parameter and there is no paste in sight.
+                    // in this case, the standard requires that we fully expand it before appending
+                    // it to the expansion (this does not happen for operands of '#' or '##').
+                    var paramTokens = Substitute(expansion, expansion.GetParamIndex(token));
+                    expansion.Append(this, paramTokens, token);
+                }
+            }
+
+            PrepareExpansion(expansion);
         }
         else
         {
@@ -481,22 +744,15 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         expansion.Cursor++;
                         Paste(expansion, token, expansion.MacroPPTokenAtCursor);
                     }
-                    else expansion.Expansion.Add(token);
+                    else expansion.Append(this, token);
                 }
             }
             else expansion.Expansion.AddRange(macroDef.Tokens);
 
-            PrepareExpansion(expansion, ppToken.IsAtStartOfLine, ppToken.HasWhiteSpaceBefore);
+            PrepareExpansion(expansion);
         }
 
         return true;
-
-        PreprocessorMacroDefinition? GetExpandableMacro(StringView name)
-        {
-            if (_macroDefs.TryGetValue(name, out var def) && !def.IsExpanding)
-                return def;
-            else return null;
-        }
 
         PreprocessorMacroDefinition? GetExpandableMacroAndArguments(StringView name, out Token[][] args)
         {
@@ -511,13 +767,73 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             if (NextRawPPToken.Kind != TokenKind.OpenParen)
                 return null;
 
-            var openParen = ReadTokenRaw();
-            Context.Assert(openParen.Kind == TokenKind.OpenParen, openParen.Source, openParen.Location, "How is this not an open paren?");
+            var openParenToken = ReadTokenRaw();
+            Context.Assert(openParenToken.Kind == TokenKind.OpenParen, openParenToken.Source, openParenToken.Location, "How is this not an open paren?");
 
+            var parsedArguments = new List<List<Token>>();
+
+            Token token = ReadTokenRaw();
+            if (token.Kind == TokenKind.CloseParen)
+            {
+                // always have at least one argument list
+                parsedArguments.Add([]);
+            }
+            else
+            {
+                parsedArguments.Add([]);
+
+                int parenNesting = 1;
+                while (token.Kind != TokenKind.EndOfFile && parenNesting > 0)
+                {
+                    switch (token.Kind)
+                    {
+                        default: break;
+                        case TokenKind.OpenParen: parenNesting++; break;
+                        case TokenKind.CloseParen:
+                        {
+                            parenNesting--;
+                            if (parenNesting == 0) continue;
+                        } break;
+
+                        // ... 'The individual arguments within the list are separated by comma preprocessing
+                        // tokens, but comma preprocessing tokens between matching inner parentheses do not
+                        // separate arguments.
+                        //
+                        // ... 'If there is a ... in the identifier-list in the macro definition, then the trailing
+                        // arguments (if any), including any separating comma preprocessing tokens, are merged to
+                        // form a single item:'
+                        case TokenKind.Comma:
+                        {
+                            if (parenNesting == 1 && (!macroDef.IsVariadic || parsedArguments.Count <= macroDef.ParameterNames.Count))
+                            {
+                                parsedArguments.Add([]);
+                                token = ReadTokenRaw();
+                                continue;
+                            }
+                        } break;
+                    }
+
+                    parsedArguments[^1].Add(token);
+                    token = ReadTokenRaw();
+                }
+
+                if (parenNesting != 0 || token.Kind != TokenKind.CloseParen)
+                    Context.ErrorExpectedMatchingCloseDelimiter(openParenToken.Source, '(', ')', token.Location, openParenToken.Location);
+            }
+
+            if (macroDef.IsVariadic && parsedArguments.Count == macroDef.ParameterNames.Count)
+            {
+                // ... 'if there are as many arguments as named parameters, the macro invocation behaves as if
+                // a comma token has been appended to the argument list such that variable arguments are formed
+                // that contain no pp-tokens.'
+                parsedArguments.Add([]);
+            }
+
+            args = [.. parsedArguments.Select(list => list.ToArray())];
             return macroDef;
         }
 
-        void PrepareExpansion(MacroExpansion expansion, bool isAtStartOfLine, bool hasWhitespaceBefore)
+        void PrepareExpansion(MacroExpansion expansion)
         {
             if (expansion.Expansion.Count == 0) return;
 
@@ -532,8 +848,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         Spelling = "pragma",
                         LeadingTrivia = expansion.SourceToken.LeadingTrivia,
                         TrailingTrivia = new([new TriviumLiteral(" ")], false),
-                        IsAtStartOfLine = isAtStartOfLine,
-                        HasWhiteSpaceBefore = hasWhitespaceBefore,
                     },
                     new Token(TokenKind.LiteralString, SourceLanguage.Laye, expansion.SourceToken.Source, expansion.SourceToken.Range)
                     {
@@ -570,12 +884,52 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
             else
             {
-                var firstToken = expansion.Expansion[0];
-                firstToken.IsAtStartOfLine = isAtStartOfLine;
-                firstToken.HasWhiteSpaceBefore = hasWhitespaceBefore;
+                expansion.Expansion[0].LeadingTrivia = expansion.SourceToken.LeadingTrivia;
+                expansion.Expansion[^1].TrailingTrivia = expansion.SourceToken.TrailingTrivia;
                 PushTokenStream(tokenStream);
             }
         }
+    }
+
+    private Token StringizeParameter(MacroExpansion expansion, Token paramToken, Token hashToken)
+    {
+        if (paramToken.Kind is not (TokenKind.CPPMacroParam or TokenKind.CPPVAArgs))
+        {
+            Context.ErrorCanOnlyStringizeParameters(hashToken, paramToken);
+            string invalidText = StringizeToken(paramToken, true);
+            return new Token(TokenKind.LiteralString, SourceLanguage.C, hashToken.Source, new(hashToken.Location, hashToken.Location))
+            {
+                Spelling = invalidText,
+                StringValue = invalidText,
+            };
+        }
+
+        var paramTokens = expansion.Arguments[expansion.GetParamIndex(paramToken)];
+        return StringizeTokens(paramTokens, hashToken);
+    }
+
+    private Token StringizeTokens(IReadOnlyList<Token> tokens, Token hashToken)
+    {
+        var builder = new StringBuilder();
+
+        bool first = true;
+        foreach (var token in tokens)
+        {
+            if (first)
+                first = false;
+            else if (token.HasWhiteSpaceBefore)
+                builder.Append(' ');
+            builder.Append(StringizeToken(token, true));
+        }
+
+        string stringValue = builder.ToString();
+        return new Token(TokenKind.LiteralString, SourceLanguage.C, hashToken.Source, hashToken.Range)
+        {
+            Spelling = stringValue,
+            StringValue = stringValue,
+            LeadingTrivia = hashToken.LeadingTrivia,
+            HasWhiteSpaceBefore = hashToken.HasWhiteSpaceBefore,
+        };
     }
 
     private void Paste(MacroExpansion expansion, Token hashHashToken, Token rightToken)
@@ -670,7 +1024,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private sealed class ParsedMacroData
     {
-        public StringView Name { get; set; }
+        public required Token NameToken { get; set; }
+        public StringView Name => NameToken.StringValue;
         public List<Token> Tokens { get; } = [];
         public List<StringView> ParameterNames { get; set; } = [];
 
@@ -691,7 +1046,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         var macroData = new ParsedMacroData()
         {
-            Name = macroNameToken.StringValue,
+            NameToken = macroNameToken,
+            //Name = macroNameToken.StringValue,
         };
 
         var token = ReadTokenRaw();
@@ -769,7 +1125,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
         }
 
-        _macroDefs[macroData.Name] = new PreprocessorMacroDefinition(macroData.Name, macroData.Tokens, macroData.ParameterNames)
+        _macroDefs[macroData.Name] = new PreprocessorMacroDefinition(macroData.NameToken, macroData.Tokens, macroData.ParameterNames)
         {
             IsFunctionLike = macroData.IsFunctionLike,
             IsVariadic = macroData.IsVariadic,
