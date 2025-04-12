@@ -321,6 +321,13 @@ public sealed class LayeCDriverCompilerOptions
             case string when arg.StartsWith("-cstd="): ParseCStd(arg[6..]); break;
             case string when arg.StartsWith("--cstd="): ParseCStd(arg[7..]); break;
 
+            case "-isystem":
+            {
+                if (!args.Shift(out string includePath))
+                    diag.Emit(DiagnosticLevel.Error, "Option '-isystem' requires an argument.");
+                else IncludePaths.AddSystemIncludePath(includePath);
+            } break;
+
             case "-I":
             {
                 if (!args.Shift(out string includePath))
