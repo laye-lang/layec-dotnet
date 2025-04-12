@@ -38,12 +38,13 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
 
     public SourceText? GetSourceTextForFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
     {
+        bool isSystemHeader;
         if (kind == IncludeKind.Local)
         {
             Assert(relativeToPath is not null, "Cannot resolve a local include path if there was no relative path provided.");
-            filePath = IncludePaths.ResolveIncludePath(filePath, relativeToPath);
+            filePath = IncludePaths.ResolveIncludePath(filePath, relativeToPath, out isSystemHeader);
         }
-        else filePath = IncludePaths.ResolveIncludePath(filePath);
+        else filePath = IncludePaths.ResolveIncludePath(filePath, out isSystemHeader);
 
         if (!File.Exists(filePath))
             return null;
@@ -55,7 +56,9 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
         try
         {
             string sourceText = File.ReadAllText(filePath);
-            return _fileCache[canonicalPath] = new(filePath, sourceText);
+            source = _fileCache[canonicalPath] = new(filePath, sourceText);
+            if (isSystemHeader) source.IsSystemHeader = true;
+            return source;
         }
         catch
         {

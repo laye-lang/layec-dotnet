@@ -2,12 +2,13 @@
 
 public sealed class IncludePaths
 {
-    private readonly List<string> _localIncludePaths = [];
+    private readonly List<string> _quoteIncludePaths = [];
     private readonly List<string> _systemIncludePaths = [];
+    private readonly List<string> _includePaths = [];
 
-    public void AddLocalIncludePath(string path)
+    public void AddQuoteIncludePath(string path)
     {
-        _localIncludePaths.Add(path);
+        _quoteIncludePaths.Add(path);
     }
 
     public void AddSystemIncludePath(string path)
@@ -15,22 +16,30 @@ public sealed class IncludePaths
         _systemIncludePaths.Add(path);
     }
 
-    public string ResolveIncludePath(string filePath, string relativeToPath)
+    public void AddIncludePath(string path)
     {
+        _includePaths.Add(path);
+    }
+
+    public string ResolveIncludePath(string filePath, string relativeToPath, out bool isSystemHeader)
+    {
+        isSystemHeader = false;
+
         if (ResolveLocalIncludePath(ref filePath, relativeToPath))
             return filePath;
 
-        return ResolveIncludePath(filePath);
+        return ResolveIncludePath(filePath, out isSystemHeader);
     }
 
-    public string ResolveIncludePath(string filePath)
+    public string ResolveIncludePath(string filePath, out bool isSystemHeader)
     {
-        if (ResolveSystemIncludePath(ref filePath))
+        if (ResolveIncludePath(ref filePath, out isSystemHeader))
             return filePath;
 
-        if (ResolveEnvironmentIncludePath(ref filePath))
+        if (ResolveEnvironmentIncludePath(ref filePath, out isSystemHeader))
             return filePath;
 
+        isSystemHeader = false;
         return filePath;
     }
 
@@ -44,7 +53,7 @@ public sealed class IncludePaths
             return true;
         }
 
-        foreach (string localIncludePath in _localIncludePaths)
+        foreach (string localIncludePath in _quoteIncludePaths)
         {
             string localFilePath = Path.Combine(localIncludePath, filePath);
             if (File.Exists(localFilePath))
@@ -57,13 +66,27 @@ public sealed class IncludePaths
         return false;
     }
 
-    private bool ResolveSystemIncludePath(ref string filePath)
+    private bool ResolveIncludePath(ref string filePath, out bool isSystemHeader)
     {
+        isSystemHeader = false;
+
         foreach (string systemIncludePath in _systemIncludePaths)
         {
             string systemFilePath = Path.Combine(systemIncludePath, filePath);
             if (File.Exists(systemFilePath))
             {
+                isSystemHeader = true;
+                filePath = systemFilePath;
+                return true;
+            }
+        }
+
+        foreach (string includePath in _includePaths)
+        {
+            string systemFilePath = Path.Combine(includePath, filePath);
+            if (File.Exists(systemFilePath))
+            {
+                isSystemHeader = false;
                 filePath = systemFilePath;
                 return true;
             }
@@ -72,8 +95,10 @@ public sealed class IncludePaths
         return false;
     }
 
-    private bool ResolveEnvironmentIncludePath(ref string filePath)
+    private bool ResolveEnvironmentIncludePath(ref string filePath, out bool isSystemHeader)
     {
+        isSystemHeader = false;
+
         string? envIncludePaths = Environment.GetEnvironmentVariable("Include") ?? Environment.GetEnvironmentVariable("INCLUDE");
         if (envIncludePaths is null)
             return false;

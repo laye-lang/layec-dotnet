@@ -325,7 +325,7 @@ public sealed class LayeCDriverCompilerOptions
             {
                 if (!args.Shift(out string includePath))
                     diag.Emit(DiagnosticLevel.Error, "Option '-I' requires an argument.");
-                else IncludePaths.AddSystemIncludePath(includePath);
+                else IncludePaths.AddIncludePath(includePath);
             } break;
 
             case string when arg.StartsWith("-I"):
@@ -333,14 +333,14 @@ public sealed class LayeCDriverCompilerOptions
                 string includePath = arg[2..];
                 if (string.IsNullOrWhiteSpace(includePath))
                     diag.Emit(DiagnosticLevel.Error, "Option '-I' requires an argument.");
-                else IncludePaths.AddSystemIncludePath(includePath);
+                else IncludePaths.AddIncludePath(includePath);
             } break;
 
             case "-iquote":
             {
                 if (!args.Shift(out string includePath))
                     diag.Emit(DiagnosticLevel.Error, "Option '-iquote' requires an argument.");
-                else IncludePaths.AddLocalIncludePath(includePath);
+                else IncludePaths.AddQuoteIncludePath(includePath);
             } break;
 
             case string when arg.StartsWith("-iquote="):
@@ -348,7 +348,7 @@ public sealed class LayeCDriverCompilerOptions
                 string includePath = arg[8..];
                 if (string.IsNullOrWhiteSpace(includePath))
                     diag.Emit(DiagnosticLevel.Error, "Option '-iquote' requires an argument.");
-                else IncludePaths.AddSystemIncludePath(includePath);
+                else IncludePaths.AddIncludePath(includePath);
             } break;
 
             case "--tokens": DriverStage = DriverStage.Preprocess; PrintTokens = true; break;
