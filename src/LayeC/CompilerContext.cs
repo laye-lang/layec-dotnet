@@ -34,6 +34,8 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
 
     public required IncludePaths IncludePaths { get; init; }
 
+    private readonly Dictionary<string, SourceText> _fileCache = [];
+
     public SourceText? GetSourceTextForFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
     {
         if (kind == IncludeKind.Local)
@@ -46,10 +48,14 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
         if (!File.Exists(filePath))
             return null;
 
+        string canonicalPath = Path.GetFullPath(filePath);
+        if (_fileCache.TryGetValue(canonicalPath, out var source))
+            return source;
+
         try
         {
             string sourceText = File.ReadAllText(filePath);
-            return new(filePath, sourceText);
+            return _fileCache[canonicalPath] = new(filePath, sourceText);
         }
         catch
         {

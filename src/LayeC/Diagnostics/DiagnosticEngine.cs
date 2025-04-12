@@ -38,6 +38,12 @@ public sealed class DiagnosticEngine(IDiagnosticConsumer consumer)
 
     public Diagnostic Emit(Diagnostic diagnostic)
     {
+        if (diagnostic.Source is { } source && source.IsSystemHeader && diagnostic.Level < DiagnosticLevel.Error)
+        {
+            OnDiagnosticIgnore();
+            return diagnostic;
+        }
+
         if (diagnostic.Level == DiagnosticLevel.Error && ErrorCount > 10)
         {
             OnDiagnosticIgnore();

@@ -593,7 +593,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
         }
 
+#pragma warning disable IDE0060 // Remove unused parameter
         public void Placemarker(Token trailingToken)
+#pragma warning restore IDE0060 // Remove unused parameter
         {
             // TODO(local): see if we can use this trailing token anywhere in the placemarker for trailing trivia
             if (PasteBefore)
@@ -684,7 +686,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 else if (arguments.Length == macroDef.ParameterNames.Count && !LanguageOptions.CIsC23)
                 {
                     Context.ExtZeroVAArgs(ppToken.Source, ppToken.Location);
-                    tryToExpand = false;
+                    // tryToExpand = false;
                 }
             }
 
@@ -1116,6 +1118,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             HandleUndefDirective();
         else if (directiveName == "include")
             HandleIncludeDirective(language, preprocessorToken, directiveToken);
+        else if (directiveName == "pragma" && language == SourceLanguage.C)
+            HandlePragmaDirective(language, preprocessorToken, directiveToken);
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
@@ -1248,6 +1252,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         SkipRemainingDirectiveTokens(null);
     }
 
+    private readonly HashSet<SourceText> _includeGuard = [];
+    private readonly Dictionary<SourceText, string> _includeGuardMacroNames = [];
+
     private void HandleIncludeDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
     {
         var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
@@ -1277,9 +1284,52 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return;
         }
 
+        // check for an unconditional header guard against re-including this file
+        if (_includeGuard.Contains(includeSource))
+        {
+            // only exception to the unconditional guard: if it was put in place by detecting idiomatic header guards
+            if (_includeGuardMacroNames.TryGetValue(includeSource, out string? includeGuardMacroName))
+            {
+                // only if the detected header guard macro is still defined is this okay to ignore.
+                if (_macroDefs.TryGetValue(includeGuardMacroName, out _))
+                    return;
+            }
+            else return;
+        }
+
         if (language == SourceLanguage.C)
             AddCIncludeLexerFromC(includeSource);
         else AddCIncludeLexerFromLaye(includeSource, preprocessorToken);
+    }
+
+    private void HandlePragmaDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
+    {
+        Context.Assert(language == SourceLanguage.C, "Pragma directive is only available in C");
+
+        var token = ReadTokenRaw();
+        if (token.Kind == TokenKind.CPPIdentifier && token.StringValue == "once")
+        {
+            Context.ExtPragmaOnce(token.Source, token.Location);
+
+            if (SkipRemainingDirectiveTokens(token))
+                Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+            _includeGuard.Add(preprocessorToken.Source);
+            return;
+        }
+        else if (token.Kind == TokenKind.CPPIdentifier && token.StringValue == "system_header")
+        {
+            preprocessorToken.Source.IsSystemHeader = true;
+
+            if (SkipRemainingDirectiveTokens(token))
+                Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+            return;
+        }
+
+        // let's not worry about warning for extra tokens on unrecognized pragmas
+        // or even warning that we don't recognize it at all, for now.
+        SkipRemainingDirectiveTokens(token);
     }
 
     private void DefineDirectiveCheckHash(ParsedMacroData macroData, int tokenIndex)

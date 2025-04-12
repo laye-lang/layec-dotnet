@@ -14,6 +14,8 @@ public sealed class SourceText(string name, string text)
     public readonly string Text = text;
     public readonly int Length = text.Length;
 
+    public bool IsSystemHeader { get; set; } = false;
+
     private int[]? _lineStartOffsets;
 
     public SourceLocationInfoShort SeekLineColumn(SourceLocation location)

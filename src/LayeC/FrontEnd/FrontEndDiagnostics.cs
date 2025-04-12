@@ -33,10 +33,13 @@ public static class FrontEndDiagnostics
     #region 1XXX - Extension Diagnostics
 
     public static void ExtVAOpt(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], $"'{KW("__VA_OPT__")}' is a C23 extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1001", source, location, [], $"'{KW("__VA_OPT__")}' is a C23 extension.");
 
     public static void ExtZeroVAArgs(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "1001", source, location, [], $"Passing 0 variadic arguments to a function-like macro is a C23 extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1002", source, location, [], $"Passing 0 variadic arguments to a function-like macro is a C23 extension.");
+
+    public static void ExtPragmaOnce(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1003", source, location, [], "'#pragma once' is a non-standard C extension.");
 
     #endregion
 
