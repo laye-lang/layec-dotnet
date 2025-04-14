@@ -415,7 +415,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 var directiveToken = NextRawPPToken;
                 if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
                 {
-                    Context.Assert(IsInLexer, "If we're reading Laye source, we must be in a lexer.");
                     var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
                     directiveToken = ReadTokenRaw();
                     return HandlePragmaC(false, lexer, ppToken, directiveToken);
