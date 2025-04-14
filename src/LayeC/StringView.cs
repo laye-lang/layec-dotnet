@@ -42,6 +42,21 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
     public char this[Index index] => Memory.Span[index];
     public StringView this[Range range] => Memory[range];
 
+    public bool IsEmpty => Length == 0;
+    public bool IsWhiteSpace
+    {
+        get
+        {
+            for (int i = 0; i < Length; i++)
+            {
+                if (!char.IsWhiteSpace(Span[i]))
+                    return false;
+            }
+
+            return true;
+        }
+    }
+
     public override string ToString() => new(Span);
 
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is StringView s && Equals(s);
@@ -62,18 +77,6 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
     {
         for (int i = 0; i < Length; i++)
             yield return Memory.Span[i];
-    }
-
-    public bool IsEmpty() => Length == 0;
-    public bool IsWhiteSpace()
-    {
-        for (int i = 0; i < Length; i++)
-        {
-            if (!char.IsWhiteSpace(Span[i]))
-                return false;
-        }
-
-        return true;
     }
 
     public int IndexOf(char c) => Span.IndexOf(c);

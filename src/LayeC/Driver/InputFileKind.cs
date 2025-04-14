@@ -6,15 +6,17 @@ public enum InputFileKind
 
     LayeSource,
     LayeSourceNoPP,
-    LayeModule,
     CSource,
     CSourceNoPP,
     CHeader,
     CHeaderNoPP,
+
     //Assembler,
     //AssemblerPP,
     //QBE,
     //LLVM,
+
+    LayeModule,
     Object,
 }
 

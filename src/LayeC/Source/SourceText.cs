@@ -2,10 +2,11 @@
 
 namespace LayeC.Source;
 
-public sealed class SourceText(string name, string text)
+// TODO(local): move the SourceLanguage field present in the Lexer and Parser into the source text itself, as each source has a "primary" language.
+public sealed class SourceText(string name, string text, SourceLanguage language)
     : IEquatable<SourceText>
 {
-    public static readonly SourceText Unknown = new("<???>", "");
+    public static readonly SourceText Unknown = new("<???>", "", SourceLanguage.None);
 
     private static int _counter = 0;
 
@@ -13,6 +14,7 @@ public sealed class SourceText(string name, string text)
     public readonly string Name = name;
     public readonly string Text = text;
     public readonly int Length = text.Length;
+    public readonly SourceLanguage Language = language;
 
     public bool IsSystemHeader { get; set; } = false;
 

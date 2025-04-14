@@ -36,7 +36,7 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
 
     private readonly Dictionary<string, SourceText> _fileCache = [];
 
-    public SourceText? GetSourceTextForFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
+    public SourceText? GetSourceTextForIncludeFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
     {
         bool isSystemHeader;
         if (kind == IncludeKind.Local)
@@ -56,7 +56,7 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
         try
         {
             string sourceText = File.ReadAllText(filePath);
-            source = _fileCache[canonicalPath] = new(filePath, sourceText);
+            source = _fileCache[canonicalPath] = new(filePath, sourceText, SourceLanguage.C);
             if (isSystemHeader) source.IsSystemHeader = true;
             return source;
         }

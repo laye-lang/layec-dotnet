@@ -164,6 +164,9 @@ public static class FrontEndDiagnostics
     public static void ErrorFunctionSpecifierNotAllowed(this CompilerContext context, SourceText source, SourceLocation location, StringView tokenSpelling) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "4003", source, location, [], $"Function specifier '{tokenSpelling}' is not allowed here.");
 
+    public static void ErrorIdentifierIsInvalidInModuleName(this CompilerContext context, Token token) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4004", token.Source, token.Location, [], "Only ASCII identifiers can form module names.");
+
     #endregion
 
     #region 5XXX - Semantic Diagnostics

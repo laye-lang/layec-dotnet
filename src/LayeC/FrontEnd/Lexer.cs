@@ -22,15 +22,14 @@ public enum LexerState
     CPPHasHeaderNames = 1 << 1,
 }
 
-public sealed class Lexer(CompilerContext context, SourceText source, LanguageOptions languageOptions,
-    SourceLanguage language = SourceLanguage.Laye)
+public sealed class Lexer(CompilerContext context, SourceText source, LanguageOptions languageOptions)
 {
     public CompilerContext Context { get; } = context;
     public SourceText Source { get; } = source;
 
     public LanguageOptions LanguageOptions { get; } = languageOptions;
 
-    public SourceLanguage Language { get; private set; } = language;
+    public SourceLanguage Language { get; private set; } = source.Language;
     public LexerState State { get; set; } = LexerState.None;
 
     public SourceLocation EndOfFileLocation { get; } = new(source.Length);

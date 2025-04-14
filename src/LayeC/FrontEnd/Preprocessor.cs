@@ -6,6 +6,23 @@ using LayeC.Source;
 
 namespace LayeC.FrontEnd;
 
+public enum PreprocessorMode
+{
+    /// <summary>
+    /// The default mode of the preprocessor, supports all features for all languages.
+    /// </summary>
+    Full,
+
+    /// <summary>
+    /// A minimal mode, for use when reading module header information from Laye source files.
+    /// Alternatively, this is useful to explicitly *not* preprocess a source file due to user input, e.g. when the source is already the result of preprocessing.
+    /// 
+    /// Disables macro expansions and directive parsing entirely, but maintains the language switching of 'pragma "C"` in Laye.
+    /// Again, remember that any embedded C code will not be preprocessed, only lexed and converted to valid tokens without preprocessing.
+    /// </summary>
+    Minimal,
+}
+
 public sealed class PreprocessorMacroDefinition(Token nameToken, IEnumerable<Token> tokens, IEnumerable<StringView> parameterNames)
 {
     public Token NameToken { get; } = nameToken;
@@ -20,7 +37,7 @@ public sealed class PreprocessorMacroDefinition(Token nameToken, IEnumerable<Tok
     public bool IsExpanding { get; set; } = false;
 }
 
-public sealed class Preprocessor(CompilerContext context, LanguageOptions languageOptions)
+public sealed class Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
 {
     public static string StringizeToken(Token token, bool escape)
     {
@@ -127,16 +144,33 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         };
     }
 
-    private CompilerContext Context { get; } = context;
-    private LanguageOptions LanguageOptions { get; } = languageOptions;
+    public CompilerContext Context { get; } = context;
+    public LanguageOptions LanguageOptions { get; } = languageOptions;
+    // TODO(local): I don't actually like how the current implementation of "Minimal" works.
+    // instead of *disabling* directives, it should instead read all their tokens (according to their same rules) and return them through buffer token streams.
+    // (I think).
+    // This way, all tokens are preserved in the output in case it's necessary.
+    // For now, this is irrelevant.
+    public PreprocessorMode Mode { get; } = mode;
 
-    public Token[] PreprocessSource(SourceText source, SourceLanguage language)
+    public SourceLanguage Language
     {
-        Context.Assert(_tokenStreams.Count == 0, "There should be no token streams left when preprocessing a new source file.");
-        PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions, language)));
+        get
+        {
+            if (_peekedRawToken is { } p)
+                return p.Language;
+            return _tokenStreams.TryPeek(out var ts) ? ts.Language : SourceLanguage.None;
+        }
+    }
+
+    public bool IsAtEnd => _tokenStreams.Count == 0;
+
+    public Token[] PreprocessSource(SourceText source)
+    {
+        PushSourceTokenStream(source);
 
         var tokens = new List<Token>();
-        while (_tokenStreams.Count > 0)
+        while (!IsAtEnd)
         {
             var token = ReadToken();
             // TODO(local): concat adjacent string literals in C
@@ -144,13 +178,25 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
             if (token.Kind == TokenKind.EndOfFile)
             {
-                Context.Assert(_tokenStreams.Count == 0, "Should have only returned the final EOF token if all token streams are empty.");
+                Context.Assert(IsAtEnd, "Should have only returned the final EOF token if all token streams are empty.");
                 break;
             }
         }
 
         Context.Diag.Flush();
         return [.. tokens];
+    }
+
+    public void PushSourceTokenStream(SourceText source)
+    {
+        Context.Assert(_tokenStreams.Count == 0, "There should be no token streams left when preprocessing a new source file.");
+        PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions)));
+    }
+
+    public Token ReadToken()
+    {
+        var ppToken = ReadAndExpandToken();
+        return ConvertPPToken(ppToken);
     }
 
     #region Implementation
@@ -162,17 +208,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private bool _withinExpressionPragmaC = false;
     private bool IsInLexer => _peekedRawToken is null && _tokenStreams.TryPeek(out var ts) && ts is LexerTokenStream;
-    private bool ArePreprocessorDirectivesAllowed => !_withinExpressionPragmaC && IsInLexer;
-
-    private SourceLanguage Language
-    {
-        get
-        {
-            if (_peekedRawToken is { } p)
-                return p.Language;
-            return _tokenStreams.TryPeek(out var ts) ? ts.Language : SourceLanguage.None;
-        }
-    }
+    private bool ArePreprocessorDirectivesAllowed => !_withinExpressionPragmaC && Mode == PreprocessorMode.Full && IsInLexer;
 
     private Token NextRawPPToken
     {
@@ -193,11 +229,14 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void AddCIncludeLexerFromC(SourceText source)
     {
-        PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions, SourceLanguage.C)));
+        Context.Assert(source.Language == SourceLanguage.C, "Only C files accepted here.");
+        PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions)));
     }
 
     private void AddCIncludeLexerFromLaye(SourceText source, Token layeSourceToken)
     {
+        Context.Assert(source.Language == SourceLanguage.C, "Only C files accepted here.");
+
         Token[] leadingTokens = [
             new Token(TokenKind.KWPragma, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {
@@ -232,7 +271,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         ];
 
         var leadingTokenStream = new BufferTokenStream(leadingTokens);
-        var lexerStream = new LexerTokenStream(new(Context, source, LanguageOptions, SourceLanguage.C));
+        var lexerStream = new LexerTokenStream(new(Context, source, LanguageOptions));
         var trailingTokenStream = new BufferTokenStream(trailingTokens);
 
         PushTokenStream(trailingTokenStream);
@@ -272,12 +311,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         _tokenStreams.Push(new BufferTokenStream([peeked]));
     }
 
-    private Token ReadToken()
-    {
-        var ppToken = ReadAndExpandToken();
-        return ConvertPPToken(ppToken);
-    }
-
     private Token ReadAndExpandToken()
     {
         // eliminate recursion at all costs
@@ -303,43 +336,37 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private Token ReadTokenRawImpl()
     {
-        var ppToken = ImplButForReal();
-        return ppToken;
-
-        Token ImplButForReal()
+        if (_peekedRawToken is { } peeked)
         {
-            if (_peekedRawToken is { } peeked)
-            {
-                _peekedRawToken = null;
-                return peeked;
-            }
+            _peekedRawToken = null;
+            return peeked;
+        }
 
-            while (_tokenStreams.Count > 0 && _tokenStreams.Peek().IsAtEnd)
-            {
-                var ts = _tokenStreams.Peek();
-                if (ts is BufferTokenStream arrayStream && arrayStream.KeepWhenEmpty)
-                    return Token.AnyEndOfFile;
-
-                PopTokenStream();
-            }
-
-            if (_tokenStreams.Count == 0)
+        while (_tokenStreams.Count > 0 && _tokenStreams.Peek().IsAtEnd)
+        {
+            var ts = _tokenStreams.Peek();
+            if (ts is BufferTokenStream arrayStream && arrayStream.KeepWhenEmpty)
                 return Token.AnyEndOfFile;
 
-            var ppToken = _tokenStreams.Peek().Read();
-            if (ppToken.Kind == TokenKind.EndOfFile)
-            {
-                if (_tokenStreams.Count == 1)
-                {
-                    PopTokenStream();
-                    return ppToken;
-                }
+            PopTokenStream();
+        }
 
-                return ReadTokenRawImpl();
+        if (_tokenStreams.Count == 0)
+            return Token.AnyEndOfFile;
+
+        var ppToken = _tokenStreams.Peek().Read();
+        if (ppToken.Kind == TokenKind.EndOfFile)
+        {
+            if (_tokenStreams.Count == 1)
+            {
+                PopTokenStream();
+                return ppToken;
             }
 
-            return ppToken;
+            return ReadTokenRawImpl();
         }
+
+        return ppToken;
     }
 
     /// <summary>
@@ -362,25 +389,38 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             Context.WarningPotentialPreprocessorDirectiveInPragmaCExpression(ppToken);
         }
 
-        if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma or TokenKind.Hash, DisableExpansion: false, IsAtStartOfLine: true } && ArePreprocessorDirectivesAllowed)
+        if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma or TokenKind.Hash, DisableExpansion: false, IsAtStartOfLine: true })
         {
-            if (ppToken.Kind == TokenKind.Hash)
-                Context.ErrorCStylePreprocessingDirective(ppToken.Source, ppToken.Location);
-
-            var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
-
-            var directiveToken = ReadTokenRaw();
-            if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
+            if (ArePreprocessorDirectivesAllowed)
             {
-                return HandlePragmaC(false, lexer, ppToken, directiveToken);
+                if (ppToken.Kind == TokenKind.Hash)
+                    Context.ErrorCStylePreprocessingDirective(ppToken.Source, ppToken.Location);
+
+                var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+                var directiveToken = ReadTokenRaw();
+                if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
+                {
+                    return HandlePragmaC(false, lexer, ppToken, directiveToken);
+                }
+                else
+                {
+                    using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
+                    DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+                    return null;
+                }
             }
             else
             {
-                using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
-                DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+                var directiveToken = NextRawPPToken;
+                if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
+                {
+                    Context.Assert(IsInLexer, "If we're reading Laye source, we must be in a lexer.");
+                    var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+                    directiveToken = ReadTokenRaw();
+                    return HandlePragmaC(false, lexer, ppToken, directiveToken);
+                }
             }
-
-            return null;
         }
 
         if (ppToken.Language == SourceLanguage.Laye && ppToken is { Kind: TokenKind.KWPragma, DisableExpansion: false } && IsInLexer && NextRawPPToken.Kind == TokenKind.LiteralString && NextRawPPToken.StringValue == "C")
@@ -390,7 +430,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return HandlePragmaC(true, lexer, ppToken, directiveToken);
         }
 
-        if (ppToken.Kind == TokenKind.CPPIdentifier && MaybeExpandMacro(ppToken))
+        if (ppToken.Kind == TokenKind.CPPIdentifier && Mode == PreprocessorMode.Full && MaybeExpandMacro(ppToken))
             return null;
 
         return ppToken;
@@ -1043,9 +1083,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return;
         }
 
-        var source = new SourceText("<paste>", concatText);
+        var source = new SourceText("<paste>", concatText, SourceLanguage.C);
         var proxyContext = new CompilerContext(VoidDiagnosticConsumer.Instance, Context.Target) { IncludePaths = Context.IncludePaths };
-        var lexer = new Lexer(proxyContext, source, LanguageOptions, SourceLanguage.C);
+        var lexer = new Lexer(proxyContext, source, LanguageOptions);
         var pastedToken = lexer.ReadNextPPToken();
         pastedToken.LeadingTrivia = leftToken.LeadingTrivia;
         pastedToken.TrailingTrivia = rightToken.TrailingTrivia;
@@ -1272,7 +1312,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return;
         }
 
-        var includeSource = Context.GetSourceTextForFilePath(
+        var includeSource = Context.GetSourceTextForIncludeFilePath(
             (string)includePathToken.StringValue,
             includePathToken.Kind == TokenKind.CPPHeaderName ? IncludeKind.System : IncludeKind.Local,
             includePathToken.Source.Name

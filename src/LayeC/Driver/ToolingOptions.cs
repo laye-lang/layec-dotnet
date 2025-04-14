@@ -42,7 +42,7 @@ public static class ToolingOptions
         {
             if (!_fileInfo.Exists) return;
 
-            var sourceText = new SourceText(_fileInfo.FullName, _fileInfo.ReadAllText());
+            var sourceText = new SourceText(_fileInfo.FullName, _fileInfo.ReadAllText(), SourceLanguage.None);
             var lineInfos = sourceText.GetLineInfos();
 
             for (int i = 0; i < lineInfos.Length; i++)
@@ -50,7 +50,7 @@ public static class ToolingOptions
                 var lineInfo = lineInfos[i];
 
                 var line = lineInfo.LineText.TrimStart();
-                if (line.StartsWith('#') || line.IsWhiteSpace())
+                if (line.StartsWith('#') || line.IsWhiteSpace)
                 {
                     _fileLines.Add(new((string)line));
                     continue;

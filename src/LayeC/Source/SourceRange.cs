@@ -3,6 +3,8 @@
 public readonly struct SourceRange
     : IComparable<SourceRange>
 {
+    public static readonly SourceRange Zero = new();
+
     public readonly SourceLocation Begin;
     public readonly SourceLocation End;
 

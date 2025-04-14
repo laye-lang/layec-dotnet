@@ -198,7 +198,8 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
 
             groupBuilder.Append('[');
             WriteColor(groupBuilder, diag.Level);
-            groupBuilder.Append(diag.Level);
+            string diagLevelString = diag.Level.ToString();
+            groupBuilder.Append(diagLevelString);
             ResetColor(groupBuilder);
             groupBuilder.Append(']');
 
@@ -231,7 +232,21 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
             }
             else groupBuilder.Append(": ");
 
-            groupBuilder.AppendLine(formatter.Render(new MarkupScopedStyle(MarkupStyle.Bold, diag.Message)));
+            string[] renderedLines = formatter.Render(new MarkupScopedStyle(MarkupStyle.Bold, diag.Message)).Split('\n');
+            Debug.Assert(renderedLines.Length > 0);
+            groupBuilder.AppendLine(renderedLines[0]);
+
+            for (int i = 1; i < renderedLines.Length; i++)
+            {
+                groupBuilder.Append("│ ");
+                for (int j = 0; j < wellInnerWidth; j++)
+                    groupBuilder.Append(' ');
+                groupBuilder.Append(" │");
+                for (int j = 0; j < 6 + diagLevelString.Length - (4 + wellInnerWidth); j++)
+                    groupBuilder.Append(' ');
+
+                groupBuilder.AppendLine(renderedLines[i]);
+            }
 
             if (diag.Source is not null)
             {
@@ -341,7 +356,21 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
             {
                 default: throw new InvalidOperationException($"Unhandled {nameof(Markup)} node in {nameof(MarkupStringRenderer)}: {markup.GetType().FullName}.");
 
-                case MarkupLineBreak: builder.AppendLine(); break;
+                case MarkupLineBreak:
+                {
+                    builder.Append(Reset);
+                    builder.Append('\n');
+
+                    foreach (string style in _styleEscapes)
+                        builder.Append(style);
+
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
+                    if (_colorEscapes.TryPeek(out string previousColor))
+                        builder.Append(previousColor);
+                    else builder.Append(DefaultColor);
+#pragma warning restore CS8600 // Converting null literal or possible null value to non-nullable type.
+                } break;
+
                 case MarkupLiteral literal: builder.Append(literal.Literal); break;
 
                 case MarkupScopedColor colored:
@@ -377,8 +406,8 @@ public sealed class FormattedDiagnosticWriter(TextWriter writer, bool useColor)
                         builder.Append(Reset);
                         foreach (string style in _styleEscapes)
                             builder.Append(style);
-#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
 
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
                         if (_colorEscapes.TryPeek(out string previousColor))
                             builder.Append(previousColor);
                         else builder.Append(DefaultColor);

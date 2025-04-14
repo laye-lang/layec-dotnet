@@ -167,6 +167,23 @@ public static class SyntaxFacts
     public static bool TryGetLayeKeywordInfo(StringView identifierText, out KeywordStandardInfo info) =>
         _layeKeywordInfos.TryGetValue(identifierText, out info);
 
+    public static bool IsAsciiIdentifier(StringView ident)
+    {
+        if (ident.Length == 0)
+            return false;
+
+        if (ident[0] is not ((>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_' or '$'))
+            return false;
+
+        foreach (char c in ident[..1])
+        {
+            if (c is not ((>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_' or '$'))
+                return false;
+        }
+
+        return true;
+    }
+
     public static bool IsIdentifierStart(SourceLanguage language, char c) => language switch
     {
         SourceLanguage.C => IsCIdentifierStart(c),

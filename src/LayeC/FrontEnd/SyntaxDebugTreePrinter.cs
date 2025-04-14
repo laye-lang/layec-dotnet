@@ -1,4 +1,6 @@
-﻿namespace LayeC.FrontEnd;
+﻿using LayeC.FrontEnd.SyntaxTree;
+
+namespace LayeC.FrontEnd;
 
 public sealed class SyntaxDebugTreePrinter(bool useColor)
     : BaseTreeDebugPrinter(useColor)
@@ -6,6 +8,12 @@ public sealed class SyntaxDebugTreePrinter(bool useColor)
     public void PrintToken(Token token)
     {
         Print(token);
+        Console.ResetColor();
+    }
+
+    public void PrintModuleUnit(SyntaxModuleUnit unit)
+    {
+        Print(unit);
         Console.ResetColor();
     }
 

@@ -1,5 +1,5 @@
 ﻿namespace LayeC.FrontEnd;
 
-public sealed partial class Parser
+public sealed class CParser
 {
 }

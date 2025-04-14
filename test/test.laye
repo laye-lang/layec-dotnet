@@ -1,1 +1,3 @@
-pragma include <stdio.h>
+module foo;
+
+import bar;
