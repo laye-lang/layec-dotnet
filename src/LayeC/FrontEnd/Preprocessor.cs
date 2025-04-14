@@ -244,6 +244,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 LeadingTrivia = layeSourceToken.LeadingTrivia,
                 TrailingTrivia = new([new TriviumLiteral(" ")], false),
                 IsAtStartOfLine = true,
+                DisableExpansion = true,
             },
             new Token(TokenKind.LiteralString, SourceLanguage.Laye, layeSourceToken.Source, layeSourceToken.Range)
             {

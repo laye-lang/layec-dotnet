@@ -8,7 +8,15 @@ public sealed partial class LayeParser
     public SyntaxModuleUnit ParseModuleUnit()
     {
         var header = ParseModuleUnitHeader();
-        return new SyntaxModuleUnit(Source, header, []);
+
+        var topLevelNodes = new List<SyntaxNode>();
+        while (!IsAtEnd)
+        {
+            var topLevelNode = ParseTopLevel();
+            topLevelNodes.Add(topLevelNode);
+        }
+
+        return new SyntaxModuleUnit(Source, header, topLevelNodes);
     }
 
     public SyntaxNode ParseTopLevel()
@@ -18,6 +26,9 @@ public sealed partial class LayeParser
         switch (CurrentToken.Kind)
         {
             case TokenKind.EndOfFile: return new SyntaxEndOfFile(Consume());
+
+            case TokenKind.KWPragma when PeekAt(1, TokenKind.LiteralString) && PeekToken(1).StringValue == "C":
+                return ParsePragmaC(PragmaCKind.Declaration);
 
             default:
             {
