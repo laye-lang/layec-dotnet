@@ -316,6 +316,30 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         // eliminate recursion at all costs
         while (true)
         {
+            while (ShouldIgnoreSourceCode())
+            {
+                Context.Assert(IsInLexer, "At this point the token stream must be a lexer");
+                Context.Assert(Language == SourceLanguage.C, "We only ignore source code because of control flow directives, which are only allowed in C");
+                var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+                bool isStartOfLine = lexer.IsAtStartOfLine;
+                char c = lexer.ReadNextCharacter();
+
+                if (isStartOfLine && c == '#')
+                {
+                    using (lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
+                    {
+                        Token directiveToken = lexer.ReadNextPPToken();
+                        TryHandleControlFlowDirective(directiveToken);
+                    }
+                }
+                else if (lexer.IsAtEnd)
+                {
+                    Context.ErrorExpectedEndifDirective(lexer.Source, lexer.CurrentLocation);
+                    _controlFlowDirectives.Pop();
+                }
+            }
+
             var ppToken = ReadTokenRaw();
             if (Preprocess(ppToken) is { } preprocessedToken)
                 return preprocessedToken;
@@ -348,6 +372,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             if (ts is BufferTokenStream arrayStream && arrayStream.KeepWhenEmpty)
                 return Token.AnyEndOfFile;
 
+            if (ts is LexerTokenStream { Lexer: { } lexer } && _controlFlowDirectives.Count > 0)
+                Context.ErrorExpectedEndifDirective(lexer.Source, lexer.CurrentLocation);
+
             PopTokenStream();
         }
 
@@ -378,9 +405,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         {
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
 
-            var directiveToken = ReadTokenRaw();
-            using var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective);
-            DispatchDirectiveParser(SourceLanguage.C, directiveToken);
+            using (lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
+            {
+                var directiveToken = ReadTokenRaw();
+                DispatchDirectiveParser(SourceLanguage.C, directiveToken);
+            }
+
             return null;
         }
 
@@ -405,9 +435,11 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 }
                 else
                 {
-                    using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
-                    DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
-                    return null;
+                    using (lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
+                    {
+                        DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+                        return null;
+                    }
                 }
             }
             else
@@ -1146,6 +1178,30 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         return hasSkippedAnyTokens;
     }
 
+    private bool TryHandleControlFlowDirective(Token directiveToken)
+    {
+        Context.Assert(directiveToken.Kind is (TokenKind.CPPIdentifier or TokenKind.Identifier), "Can only handle identifier directives.");
+
+        var directiveName = directiveToken.StringValue;
+        if (directiveName == "ifdef")
+            HandleIfdefDirective(directiveToken, true);
+        else if (directiveName == "ifndef")
+            HandleIfdefDirective(directiveToken, false);
+        // TODO(nic): 'elifdef' and 'elifndef' are c23 standard features, limit it to that
+        else if (directiveName == "elifdef")
+            HandleElifdefDirective(directiveToken, true);
+        else if (directiveName == "elifndef")
+            HandleElifdefDirective(directiveToken, false);
+        else if (directiveName == "else")
+            HandleElseDirective(directiveToken);
+        else if (directiveName == "endif")
+            HandleEndifDirective(directiveToken);
+        else
+            return false;
+
+        return true;
+    }
+
     private void HandleDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
     {
         Context.Assert(directiveToken.Kind is (TokenKind.CPPIdentifier or TokenKind.Identifier), "Can only handle identifier directives.");
@@ -1159,6 +1215,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             HandleIncludeDirective(language, preprocessorToken, directiveToken);
         else if (directiveName == "pragma" && language == SourceLanguage.C)
             HandlePragmaDirective(language, preprocessorToken, directiveToken);
+        else if (language == SourceLanguage.C && TryHandleControlFlowDirective(directiveToken))
+            return;
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
@@ -1289,6 +1347,109 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         _macroDefs.Remove(macroNameToken.StringValue);
         SkipRemainingDirectiveTokens(null);
+    }
+
+    private readonly Stack<ControlFlowDirective> _controlFlowDirectives = [];
+
+    private sealed class ControlFlowDirective
+    {
+        public bool ignoreSourceCode { get; set; } = false;
+        public bool alreadyHadElse { get; set; } = false;
+    }
+
+    private bool ShouldIgnoreSourceCode()
+    {
+        if (_controlFlowDirectives.Count <= 0)
+            return false;
+
+        foreach (var controlFlowDirective in _controlFlowDirectives)
+            if (controlFlowDirective.ignoreSourceCode)
+                return true;
+
+        return false;
+    }
+
+    private void HandleIfdefDirective(Token directiveToken, bool ifdef)
+    {
+        var macroNameToken = ReadTokenRaw();
+        if (macroNameToken.Kind != TokenKind.CPPIdentifier)
+        {
+            Context.ErrorExpectedMacroName(macroNameToken.Source, macroNameToken.Location);
+            SkipRemainingDirectiveTokens(macroNameToken);
+            return;
+        }
+
+        if (SkipRemainingDirectiveTokens(macroNameToken))
+            Context.WarningExtraTokensAtEndOfDirective(macroNameToken);
+
+        ControlFlowDirective controlFlowDirective = new();
+        bool macroExists = _macroDefs.ContainsKey(macroNameToken.StringValue);
+        controlFlowDirective.ignoreSourceCode = (ifdef) ? !macroExists : macroExists;
+        _controlFlowDirectives.Push(controlFlowDirective);
+    }
+
+    private void HandleElifdefDirective(Token directiveToken, bool elifdef)
+    {
+        var macroNameToken = ReadTokenRaw();
+        if (macroNameToken.Kind != TokenKind.CPPIdentifier)
+        {
+            Context.ErrorExpectedMacroName(macroNameToken.Source, macroNameToken.Location);
+            SkipRemainingDirectiveTokens(macroNameToken);
+            return;
+        }
+
+        if (SkipRemainingDirectiveTokens(macroNameToken))
+            Context.WarningExtraTokensAtEndOfDirective(macroNameToken);
+
+        if (_controlFlowDirectives.Count <= 0)
+        {
+            Context.ErrorStrayDirective(directiveToken);
+            return;
+        }
+
+        ControlFlowDirective controlFlowDirective = _controlFlowDirectives.Peek();
+        if (controlFlowDirective.alreadyHadElse)
+        {
+            Context.ErrorDirectiveNotAllowedAfterElseDirective(directiveToken);
+        }
+
+        bool macroExists = _macroDefs.ContainsKey(macroNameToken.StringValue);
+        controlFlowDirective.ignoreSourceCode = (elifdef) ? !macroExists : macroExists;
+    }
+
+    private void HandleElseDirective(Token directiveToken)
+    {
+        if (SkipRemainingDirectiveTokens(directiveToken))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (_controlFlowDirectives.Count <= 0)
+        {
+            Context.ErrorStrayDirective(directiveToken);
+            return;
+        }
+
+        ControlFlowDirective controlFlowDirective = _controlFlowDirectives.Peek();
+        if (controlFlowDirective.alreadyHadElse)
+        {
+            Context.ErrorDirectiveNotAllowedAfterElseDirective(directiveToken);
+        }
+
+        controlFlowDirective.alreadyHadElse = true;
+        controlFlowDirective.ignoreSourceCode = !controlFlowDirective.ignoreSourceCode;
+    }
+
+    private void HandleEndifDirective(Token directiveToken)
+    {
+        if (SkipRemainingDirectiveTokens(directiveToken))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (_controlFlowDirectives.Count <= 0)
+        {
+            Context.ErrorStrayDirective(directiveToken);
+            return;
+        }
+
+        _controlFlowDirectives.Pop();
     }
 
     private readonly HashSet<SourceText> _includeGuard = [];

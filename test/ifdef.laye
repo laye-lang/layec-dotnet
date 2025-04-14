@@ -1,0 +1,4 @@
+pragma include "ifdef.h"
+
+void main() {
+}

@@ -146,7 +146,17 @@ public static class FrontEndDiagnostics
     }
 
     public static void ErrorCanOnlyStringizeParameters(this CompilerContext context, Token token, Token hashToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "3021", hashToken.Source, hashToken.Location, [token.Range], "'#' must be followed by a parameter name or '__VA_ARGS__'.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3023", hashToken.Source, hashToken.Location, [token.Range], "'#' must be followed by a parameter name or '__VA_ARGS__'.");
+
+    // NOTE(nic): there is another error related to missing endif before in this same file, check with local if they should be the same thing
+    public static void ErrorExpectedEndifDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3024", source, location, [], "Expected #endif directive.");
+
+    public static void ErrorStrayDirective(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3025", directiveToken.Source, directiveToken.Location, [], $"Stray #{directiveToken.StringValue} directive.");
+
+    public static void ErrorDirectiveNotAllowedAfterElseDirective(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3026", directiveToken.Source, directiveToken.Location, [], $"Cannot have #{directiveToken.StringValue} directive after #else directive.");
 
     #endregion
 

@@ -40,6 +40,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     private bool _isAtStartOfLine = true;
     private bool _hasWhiteSpaceBefore = false;
 
+    public bool IsAtStartOfLine => _isAtStartOfLine;
     public bool IsAtEnd => _readPosition >= Source.Text.Length;
     private char CurrentCharacter => PeekCharacter(0, out int _);
 
@@ -270,6 +271,23 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     #endregion
 
     #region Tokens
+
+    // NOTE(nic): should this be in 'Tokens' region?
+    public char ReadNextCharacter()
+    {
+        // NOTE(nic): maybe local would like to handle this differently?
+        Context.Assert(!IsAtEnd, "Should not try to read character from empty lexer");
+        char c = CurrentCharacter;
+        Advance();
+
+        if (!char.IsWhiteSpace(c))
+        {
+            _isAtStartOfLine = false;
+            _hasWhiteSpaceBefore = false;
+        }
+
+        return c;
+    }
 
     public Token ReadNextPPToken()
     {
