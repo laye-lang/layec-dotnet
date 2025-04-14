@@ -21,11 +21,11 @@ public sealed class SyntaxModuleUnit(SourceText source, SyntaxModuleUnitHeader h
     }
 }
 
-public sealed class SyntaxModuleUnitHeader(SyntaxModuleDeclaration moduleDecl, IEnumerable<SyntaxImportDeclaration> importDecls)
+public sealed class SyntaxModuleUnitHeader(SyntaxDeclModule moduleDecl, IEnumerable<SyntaxDeclImport> importDecls)
     : SyntaxNode(moduleDecl.Source, moduleDecl.Range)
 {
-    public SyntaxModuleDeclaration ModuleDeclaration { get; } = moduleDecl;
-    public IReadOnlyList<SyntaxImportDeclaration> ImportDeclarations { get; } = [.. importDecls];
+    public SyntaxDeclModule ModuleDeclaration { get; } = moduleDecl;
+    public IReadOnlyList<SyntaxDeclImport> ImportDeclarations { get; } = [.. importDecls];
 
     protected override string DebugNodeName { get; } = nameof(SyntaxModuleUnitHeader);
     protected override IEnumerable<ITreeDebugNode> Children

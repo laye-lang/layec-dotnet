@@ -4,27 +4,27 @@ using LayeC.Source;
 
 namespace LayeC.FrontEnd.SyntaxTree.Decls;
 
-public abstract class SyntaxModuleDeclaration(SourceText source, SourceRange range, StringView moduleName)
+public abstract class SyntaxDeclModule(SourceText source, SourceRange range, StringView moduleName)
     : SyntaxNode(source, range)
 {
     public StringView ModuleName { get; } = moduleName;
 }
 
-public sealed class SyntaxImplicitProgramModuleDeclaration(SourceText source)
-    : SyntaxModuleDeclaration(source, SourceRange.Zero, LayeModule.ProgramModuleName)
+public sealed class SyntaxDeclImplicitProgramModule(SourceText source)
+    : SyntaxDeclModule(source, SourceRange.Zero, LayeModule.ProgramModuleName)
 {
-    protected override string DebugNodeName { get; } = nameof(SyntaxImplicitProgramModuleDeclaration);
+    protected override string DebugNodeName { get; } = nameof(SyntaxDeclImplicitProgramModule);
     protected override IEnumerable<ITreeDebugNode> Children { get; } = Array.Empty<ITreeDebugNode>();
 }
 
-public sealed class SyntaxNamedModuleDeclaration(Token moduleKeywordToken, SyntaxModuleName moduleNameSyntax, Token semiColonToken)
-    : SyntaxModuleDeclaration(moduleKeywordToken.Source, moduleKeywordToken.Range, moduleNameSyntax.ModuleName)
+public sealed class SyntaxDeclNamedModule(Token moduleKeywordToken, SyntaxModuleName moduleNameSyntax, Token semiColonToken)
+    : SyntaxDeclModule(moduleKeywordToken.Source, moduleKeywordToken.Range, moduleNameSyntax.ModuleName)
 {
     public Token ModuleKeywordToken { get; } = moduleKeywordToken;
     public SyntaxModuleName ModuleNameSyntax { get; } = moduleNameSyntax;
     public Token SemiColonToken { get; } = semiColonToken;
 
-    protected override string DebugNodeName { get; } = nameof(SyntaxModuleDeclaration);
+    protected override string DebugNodeName { get; } = nameof(SyntaxDeclModule);
     protected override IEnumerable<ITreeDebugNode> Children { get; } = [moduleKeywordToken, moduleNameSyntax, semiColonToken];
 }
 

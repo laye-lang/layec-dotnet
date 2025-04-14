@@ -1,5 +1,4 @@
-﻿
-namespace LayeC.FrontEnd.SyntaxTree.Decls;
+﻿namespace LayeC.FrontEnd.SyntaxTree;
 
 public sealed class SyntaxEndOfFile(Token endOfFileToken)
     : SyntaxNode(endOfFileToken.Source, endOfFileToken.Range)

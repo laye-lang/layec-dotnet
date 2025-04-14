@@ -8,22 +8,22 @@ public sealed partial class LayeParser
     public SyntaxModuleUnitHeader ParseModuleUnitHeader()
     {
         var moduleDecl = TryParseModuleDeclaration()
-            ?? new SyntaxImplicitProgramModuleDeclaration(Source);
+            ?? new SyntaxDeclImplicitProgramModule(Source);
 
-        var importDecls = new List<SyntaxImportDeclaration>();
+        var importDecls = new List<SyntaxDeclImport>();
         while (TryParseImportDeclaration() is { } importDecl)
             importDecls.Add(importDecl);
 
         return new SyntaxModuleUnitHeader(moduleDecl, importDecls);
     }
 
-    public SyntaxModuleDeclaration? TryParseModuleDeclaration()
+    public SyntaxDeclModule? TryParseModuleDeclaration()
     {
         if (!At(TokenKind.KWModule)) return null;
         return ParseNamedModuleDeclaration();
     }
 
-    private SyntaxNamedModuleDeclaration ParseNamedModuleDeclaration()
+    private SyntaxDeclNamedModule ParseNamedModuleDeclaration()
     {
         Context.Assert(At(TokenKind.KWModule), $"Can only call {nameof(ParseNamedModuleDeclaration)} when at a 'module' keyword token.");
 
@@ -31,7 +31,7 @@ public sealed partial class LayeParser
         var moduleName = ParseModuleName();
         var semiColonToken = Expect("';'", TokenKind.SemiColon);
 
-        return new SyntaxNamedModuleDeclaration(moduleKeywordToken, moduleName, semiColonToken);
+        return new SyntaxDeclNamedModule(moduleKeywordToken, moduleName, semiColonToken);
     }
 
     public SyntaxModuleName ParseModuleName()
@@ -61,13 +61,13 @@ public sealed partial class LayeParser
         return SyntaxModuleName.Create(nameTokens, delimiterTokens);
     }
 
-    public SyntaxImportDeclaration? TryParseImportDeclaration()
+    public SyntaxDeclImport? TryParseImportDeclaration()
     {
         if (!At(TokenKind.KWImport)) return null;
         return ParseImportDeclaration();
     }
 
-    private SyntaxImportDeclaration ParseImportDeclaration()
+    private SyntaxDeclImport ParseImportDeclaration()
     {
         Context.Assert(At(TokenKind.KWImport), $"Can only call {nameof(ParseImportDeclaration)} when at an 'import' keyword token.");
 
@@ -75,6 +75,6 @@ public sealed partial class LayeParser
         var moduleName = ParseModuleName();
         var semiColonToken = Expect("';'", TokenKind.SemiColon);
 
-        return new SyntaxImportDeclaration(importKeywordToken, moduleName, semiColonToken);
+        return new SyntaxDeclImport(importKeywordToken, moduleName, semiColonToken);
     }
 }

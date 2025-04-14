@@ -1,6 +1,6 @@
 ﻿namespace LayeC.FrontEnd.SyntaxTree.Decls;
 
-public sealed class SyntaxDelayedPragmaCDeclaration(Token pragmaKeywordToken, Token cStringToken, Token openCurlyToken, IEnumerable<Token> cSyntaxTokens, Token closeCurlyToken)
+public sealed class SyntaxDeclDelayedPragmaC(Token pragmaKeywordToken, Token cStringToken, Token openCurlyToken, IEnumerable<Token> cSyntaxTokens, Token closeCurlyToken)
     : SyntaxNode(pragmaKeywordToken.Source, pragmaKeywordToken.Range)
 {
     public Token PragmaKeywordToken { get; } = pragmaKeywordToken;
@@ -10,7 +10,7 @@ public sealed class SyntaxDelayedPragmaCDeclaration(Token pragmaKeywordToken, To
 
     public IReadOnlyList<Token> CSyntaxTokens { get; } = [.. cSyntaxTokens];
 
-    protected override string DebugNodeName { get; } = nameof(SyntaxDelayedPragmaCDeclaration);
+    protected override string DebugNodeName { get; } = nameof(SyntaxDeclDelayedPragmaC);
     protected override IEnumerable<ITreeDebugNode> Children
     {
         get
