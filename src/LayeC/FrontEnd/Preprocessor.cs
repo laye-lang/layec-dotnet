@@ -1883,6 +1883,23 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     return B(File.Exists(includeFilePath));
                 }
 
+                case TokenKind.CPPIdentifier when token.StringValue == "__has_cpp_attribute" && At(TokenKind.OpenParen):
+                {
+                    Context.ExtHasFeature(token);
+                    Consume();
+
+                    var attributeToken = Consume();
+                    Expect("')'", TokenKind.CloseParen);
+
+                    if (attributeToken.Kind != TokenKind.CPPIdentifier)
+                    {
+                        Context.ErrorExpectedToken(attributeToken.Source, attributeToken.Location, "an identifier");
+                        return 0;
+                    }
+
+                    return 0;
+                }
+
                 case TokenKind.CPPIdentifier:
                 {
                     if (_pp.MaybeExpandMacro(token, parenMustBeDirectlyAdjacent: false))
@@ -1926,7 +1943,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         private int EvaluateBinary(int lhs, int precedence)
         {
-            while (!IsAtEnd && GetBinaryOperatorPrecedence(CurrentToken) >= precedence)
+            while (!IsAtEnd && CurrentToken.Kind is not (TokenKind.CloseParen) && GetBinaryOperatorPrecedence(CurrentToken) >= precedence)
             {
                 var operatorToken = Consume();
 
@@ -1943,24 +1960,24 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
                 switch (operatorToken.Kind)
                 {
-                    case TokenKind.Star: return lhs * rhs;
-                    case TokenKind.Slash: return lhs / rhs;
-                    case TokenKind.Percent: return lhs % rhs;
-                    case TokenKind.Plus: return lhs + rhs;
-                    case TokenKind.Minus: return lhs - rhs;
-                    case TokenKind.LessLess: return lhs << rhs;
-                    case TokenKind.GreaterGreater: return lhs >> rhs;
-                    case TokenKind.Less: return B(lhs < rhs);
-                    case TokenKind.LessEqual: return B(lhs <= rhs);
-                    case TokenKind.Greater: return B(lhs > rhs);
-                    case TokenKind.GreaterEqual: return B(lhs >= rhs);
-                    case TokenKind.EqualEqual: return B(lhs == rhs);
-                    case TokenKind.BangEqual: return B(lhs != rhs);
-                    case TokenKind.Ampersand: return lhs & rhs;
-                    case TokenKind.Caret: return lhs ^ rhs;
-                    case TokenKind.Pipe: return lhs | rhs;
-                    case TokenKind.AmpersandAmpersand: return B(lhs != 0 && rhs != 0);
-                    case TokenKind.PipePipe: return B(lhs != 0 || rhs != 0);
+                    case TokenKind.Star: lhs = lhs * rhs; break;
+                    case TokenKind.Slash: lhs = lhs / rhs; break;
+                    case TokenKind.Percent: lhs = lhs % rhs; break;
+                    case TokenKind.Plus: lhs = lhs + rhs; break;
+                    case TokenKind.Minus: lhs = lhs - rhs; break;
+                    case TokenKind.LessLess: lhs = lhs << rhs; break;
+                    case TokenKind.GreaterGreater: lhs = lhs >> rhs; break;
+                    case TokenKind.Less: lhs = B(lhs < rhs); break;
+                    case TokenKind.LessEqual: lhs = B(lhs <= rhs); break;
+                    case TokenKind.Greater: lhs = B(lhs > rhs); break;
+                    case TokenKind.GreaterEqual: lhs = B(lhs >= rhs); break;
+                    case TokenKind.EqualEqual: lhs = B(lhs == rhs); break;
+                    case TokenKind.BangEqual: lhs = B(lhs != rhs); break;
+                    case TokenKind.Ampersand: lhs = lhs & rhs; break;
+                    case TokenKind.Caret: lhs = lhs ^ rhs; break;
+                    case TokenKind.Pipe: lhs = lhs | rhs; break;
+                    case TokenKind.AmpersandAmpersand: lhs = B(lhs != 0 && rhs != 0); break;
+                    case TokenKind.PipePipe: lhs = B(lhs != 0 || rhs != 0); break;
 
                     default:
                     {
