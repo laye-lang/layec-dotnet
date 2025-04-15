@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Text;
 
 using LayeC.Diagnostics;
@@ -696,7 +697,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         else return null;
     }
 
-    private bool MaybeExpandMacro(Token ppToken)
+    private bool MaybeExpandMacro(Token ppToken, bool parenMustBeDirectlyAdjacent = true)
     {
         Context.Assert(ppToken.Kind == TokenKind.CPPIdentifier, "Can only attempt to expand C preprocessor identifiers.");
 
@@ -935,6 +936,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 return macroDef;
 
             if (NextRawPPToken.Kind != TokenKind.OpenParen)
+                return null;
+
+            if (parenMustBeDirectlyAdjacent && NextRawPPToken.LeadingTrivia.Trivia.Count != 0)
                 return null;
 
             var openParenToken = ReadTokenRaw();
@@ -1425,7 +1429,22 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void HandleIfDirective(Token preprocessorToken, Token directiveToken)
     {
-        Context.Todo(nameof(HandleIfDirective));
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        var eval = new PPExprParser(this, lexer);
+        bool isBranchChosen = 1 == eval.Evaluate();
+
+        // TODO(local): report a different error if we didn't manage to consume all the necessary tokens
+        SkipRemainingDirectiveTokens(eval.LastReadToken);
+
+        var ifState = new PreprocessorIfState(directiveToken) { HasBranchBeenTaken = isBranchChosen };
+        lexer.PreprocessorIfStates.Push(ifState);
+
+        // if we passed the condition, continue to lex and preprocess tokens like normal.
+        if (isBranchChosen)
+            return;
+
+        SkipTokensUntilNextValidConditionalDirective();
     }
 
     private void HandleIfdefDirective(Token preprocessorToken, Token directiveToken, bool isIfdef)
@@ -1458,7 +1477,32 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     private void HandleElifDirective(Token preprocessorToken, Token directiveToken)
     {
-        Context.Todo(nameof(HandleElifDirective));
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        var eval = new PPExprParser(this, lexer);
+        bool isBranchChosen = 1 == eval.Evaluate();
+
+        // TODO(local): report a different error if we didn't manage to consume all the necessary tokens
+        SkipRemainingDirectiveTokens(eval.LastReadToken);
+
+        if (lexer.PreprocessorIfDepth == 0)
+        {
+            Context.ErrorConditionalDirectiveWithoutIf(directiveToken);
+            return;
+        }
+
+        var state = lexer.PreprocessorIfStates.Peek();
+        if (!state.HasBranchBeenTaken)
+        {
+            // if we passed the condition, continue to lex and preprocess tokens like normal.
+            if (isBranchChosen)
+            {
+                state.HasBranchBeenTaken = true;
+                return;
+            }
+        }
+
+        SkipTokensUntilNextValidConditionalDirective();
     }
 
     private void HandleElifdefDirective(Token preprocessorToken, Token directiveToken, bool isElifdef)
@@ -1654,6 +1698,245 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         Token SafeGetToken(int index)
         {
             return index < macroData.Tokens.Count ? macroData.Tokens[index] : Token.AnyEndOfFile;
+        }
+    }
+
+    #endregion
+
+    #region Expression Evaluation
+
+    private sealed class PPExprLexerTokenStream(Preprocessor pp, Lexer lexer)
+        : ITokenStream
+    {
+        private readonly int _initialTokenStreamCount = pp._tokenStreams.Count;
+
+        public Lexer Lexer { get; } = lexer;
+
+        private bool _isAtEnd = false;
+        public bool IsAtEnd => _isAtEnd || pp.NextRawPPToken.Kind is TokenKind.CPPDirectiveEnd or TokenKind.EndOfFile;
+        public SourceLanguage Language => Lexer.Language;
+
+        public Token LastToken { get; set; } = Token.AnyEndOfFile;
+
+        public Token Read()
+        {
+            //pp.Context.Assert(pp.IsInLexer && pp._tokenStreams.Peek() is LexerTokenStream { } lts && lts.Lexer == Lexer, "Should still be at the correct/current lexer if trying to read from this expression token stream.");
+            pp.Context.Assert(!IsAtEnd, "Don't attempt to read past the end of this token stream.");
+            pp.Context.Assert(pp._tokenStreams.Count >= _initialTokenStreamCount, "Somehow popped the lexer's token stream, shit.");
+
+            var token = LastToken = pp.ReadTokenRaw();
+            if (token.Kind is TokenKind.CPPDirectiveEnd or TokenKind.EndOfFile)
+                _isAtEnd = true;
+            return token;
+        }
+    }
+
+    private sealed class PPExprParser
+        : Parser
+    {
+        private readonly Preprocessor _pp;
+        private readonly PPExprLexerTokenStream _ts;
+
+        public Token LastReadToken => _ts.LastToken;
+
+        private PPExprParser(Preprocessor pp, PPExprLexerTokenStream tokenStream)
+            : base(pp.Context, pp.LanguageOptions, tokenStream.Lexer.Source, tokenStream)
+        {
+            _pp = pp;
+            _ts = tokenStream;
+        }
+
+        public PPExprParser(Preprocessor pp, Lexer lexer)
+            : this(pp, new PPExprLexerTokenStream(pp, lexer))
+        {
+        }
+
+        private static int B(bool b) => b ? 1 : 0;
+
+        private void ConsumeUntilMatchingCloseParen()
+        {
+            int nesting = 1;
+            while (!IsAtEnd)
+            {
+                switch (CurrentToken.Kind)
+                {
+                    case TokenKind.OpenParen: nesting++; break;
+                    case TokenKind.CloseParen:
+                    {
+                        nesting--;
+                        if (nesting == 0) return;
+                    } break;
+                }
+
+                Consume();
+            }
+
+            Expect("')'", TokenKind.CloseParen);
+        }
+
+        public int Evaluate()
+        {
+            int primary = EvaluatePrimary();
+            return EvaluateBinary(primary, 0);
+        }
+
+        private int EvaluatePrimary()
+        {
+            if (IsAtEnd)
+            {
+                Context.ErrorExpectedValueInPPExpr(Source, CurrentLocation);
+                return 0;
+            }
+
+            var token = Consume();
+            switch (token.Kind)
+            {
+                case TokenKind.CPPNumber: return B(token.StringValue != "0");
+                case TokenKind.Bang: return B(EvaluatePrimary() == 0);
+
+                case TokenKind.OpenParen:
+                {
+                    int subexpr = Evaluate();
+                    Expect("')'", TokenKind.CloseParen);
+                    return subexpr;
+                }
+
+                case TokenKind.CPPIdentifier when token.StringValue == "defined":
+                {
+                    if (IsAtEnd)
+                    {
+                        Context.ErrorExpectedMacroName(Source, CurrentLocation);
+                        return 0;
+                    }
+
+                    if (TryConsume(TokenKind.OpenParen) is not null)
+                    {
+                        var macroToken = Consume();
+                        Expect("')'", TokenKind.CloseParen);
+
+                        if (macroToken.Kind != TokenKind.CPPIdentifier)
+                        {
+                            Context.ErrorExpectedMacroName(macroToken.Source, macroToken.Location);
+                            return 0;
+                        }
+
+                        return B(_pp._macroDefs.ContainsKey(macroToken.StringValue));
+                    }
+
+                    var macroNameToken = Consume();
+                    if (macroNameToken.Kind != TokenKind.CPPIdentifier)
+                    {
+                        Context.ErrorExpectedMacroName(macroNameToken.Source, macroNameToken.Location);
+                        return 0;
+                    }
+
+                    return B(_pp._macroDefs.ContainsKey(macroNameToken.StringValue));
+                }
+
+                case TokenKind.CPPIdentifier when token.StringValue == "__has_feature" && At(TokenKind.OpenParen):
+                {
+                    Context.ExtHasFeature(token);
+                    Consume();
+
+                    var featureToken = Consume();
+                    Expect("')'", TokenKind.CloseParen);
+
+                    if (featureToken.Kind != TokenKind.CPPIdentifier)
+                    {
+                        Context.ErrorExpectedToken(featureToken.Source, featureToken.Location, "an identifier");
+                        return 0;
+                    }
+
+                    return 0;
+                }
+
+                case TokenKind.CPPIdentifier:
+                {
+                    if (_pp.MaybeExpandMacro(token, parenMustBeDirectlyAdjacent: false))
+                        return EvaluatePrimary();
+
+                    if (TryConsume(TokenKind.OpenParen) is not null)
+                    {
+                        Context.ErrorFunctionLikeMacroIsNotDefined(token.Source, token.Location);
+                        ConsumeUntilMatchingCloseParen();
+                        return 0;
+                    }
+
+                    // it's an undefined identifier and also not a function-like macro invocation, just return 0
+                    return 0;
+                }
+
+                default:
+                {
+                    Context.ErrorInvalidTokenInPPExpr(token);
+                    return 0;
+                }
+            }
+        }
+
+        private static int GetBinaryOperatorPrecedence(Token token) => token.Kind switch
+        {
+            TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 10,
+            TokenKind.Plus or TokenKind.Minus => 9,
+            TokenKind.LessLess or TokenKind.GreaterGreater => 8,
+            TokenKind.Less or TokenKind.LessEqual or TokenKind.Greater or TokenKind.GreaterEqual => 7,
+            TokenKind.EqualEqual or TokenKind.BangEqual => 6,
+            TokenKind.Ampersand => 5,
+            TokenKind.Caret => 4,
+            TokenKind.Pipe => 3,
+            TokenKind.AmpersandAmpersand => 2,
+            TokenKind.PipePipe => 1,
+            _ => 0,
+        };
+
+        private bool IsBinaryOperatorRightAssociative(Token token) => false;
+
+        private int EvaluateBinary(int lhs, int precedence)
+        {
+            while (!IsAtEnd && GetBinaryOperatorPrecedence(CurrentToken) >= precedence)
+            {
+                var operatorToken = Consume();
+
+                int rhs = EvaluatePrimary();
+
+                bool isRightAssoc = IsBinaryOperatorRightAssociative(operatorToken);
+                while (!IsAtEnd && (
+                        GetBinaryOperatorPrecedence(CurrentToken) > GetBinaryOperatorPrecedence(operatorToken) ||
+                        (isRightAssoc && GetBinaryOperatorPrecedence(CurrentToken) == GetBinaryOperatorPrecedence(operatorToken))
+                    ))
+                {
+                    rhs = EvaluateBinary(rhs, GetBinaryOperatorPrecedence(CurrentToken));
+                }
+
+                switch (operatorToken.Kind)
+                {
+                    case TokenKind.Star: return lhs * rhs;
+                    case TokenKind.Slash: return lhs / rhs;
+                    case TokenKind.Percent: return lhs % rhs;
+                    case TokenKind.Plus: return lhs + rhs;
+                    case TokenKind.Minus: return lhs - rhs;
+                    case TokenKind.LessLess: return lhs << rhs;
+                    case TokenKind.GreaterGreater: return lhs >> rhs;
+                    case TokenKind.Less: return B(lhs < rhs);
+                    case TokenKind.LessEqual: return B(lhs <= rhs);
+                    case TokenKind.Greater: return B(lhs > rhs);
+                    case TokenKind.GreaterEqual: return B(lhs >= rhs);
+                    case TokenKind.EqualEqual: return B(lhs == rhs);
+                    case TokenKind.BangEqual: return B(lhs != rhs);
+                    case TokenKind.Ampersand: return lhs & rhs;
+                    case TokenKind.Caret: return lhs ^ rhs;
+                    case TokenKind.Pipe: return lhs | rhs;
+                    case TokenKind.AmpersandAmpersand: return B(lhs != 0 && rhs != 0);
+                    case TokenKind.PipePipe: return B(lhs != 0 || rhs != 0);
+
+                    default:
+                    {
+                        Context.ErrorTokenIsNotBinaryOperatorInPPExpr(operatorToken);
+                    } break;
+                }
+            }
+
+            return lhs;
         }
     }
 
