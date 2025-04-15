@@ -18,7 +18,16 @@ public abstract class Parser(CompilerContext context, LanguageOptions languageOp
 
     public bool IsAtEnd => _peekedTokens.Count == 0 && _tokens.IsAtEnd;
     public Token CurrentToken => PeekToken(0);
-    public SourceLocation CurrentLocation => CurrentToken.Location;
+
+    private SourceLocation _lastValidLocation;
+    public SourceLocation CurrentLocation => !IsAtEnd ? CurrentToken.Location : _lastValidLocation;
+
+    private void InternalAdvance()
+    {
+        if (IsAtEnd) return;
+        _lastValidLocation = CurrentToken.Range.End + 1;
+        _peekedTokens.RemoveAt(0);
+    }
 
     public Token PeekToken(int ahead)
     {
@@ -58,7 +67,7 @@ public abstract class Parser(CompilerContext context, LanguageOptions languageOp
     {
         Context.Assert(!IsAtEnd, "Can't consume past the end of the parser's token stream.");
         var result = CurrentToken;
-        _peekedTokens.RemoveAt(0);
+        InternalAdvance();
         return result;
     }
 
@@ -66,7 +75,7 @@ public abstract class Parser(CompilerContext context, LanguageOptions languageOp
     {
         if (!At(kind)) return null;
         var result = CurrentToken;
-        _peekedTokens.RemoveAt(0);
+        InternalAdvance();
         return result;
     }
 
@@ -80,7 +89,7 @@ public abstract class Parser(CompilerContext context, LanguageOptions languageOp
         }
 
         var result = CurrentToken;
-        _peekedTokens.RemoveAt(0);
+        InternalAdvance();
         return result;
     }
 
@@ -97,7 +106,7 @@ public abstract class Parser(CompilerContext context, LanguageOptions languageOp
                 return ct;
             }
 
-            _peekedTokens.RemoveAt(0);
+            InternalAdvance();
         }
 
         Context.ErrorExpectedToken(Source, CurrentLocation, what);

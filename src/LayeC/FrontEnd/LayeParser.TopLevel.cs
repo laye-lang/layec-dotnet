@@ -23,6 +23,10 @@ public sealed partial class LayeParser
     {
         Context.Assert(!IsAtEnd, $"Cannot call {nameof(ParseTopLevel)} when the parser has reached the end of the token stream.");
 
+        // TODO(local): parse template parameters
+        // TODO(local): parse decl attributes
+        // TODO(local): if not static-if, then conditional attributes
+
         switch (CurrentToken.Kind)
         {
             case TokenKind.EndOfFile: return new SyntaxEndOfFile(Consume());

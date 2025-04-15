@@ -1,7 +1,7 @@
 ﻿namespace LayeC.FrontEnd.SyntaxTree.Exprs;
 
 public sealed class SyntaxExprDelayedPragmaC(Token pragmaKeywordToken, Token cStringToken, Token openParenToken, IEnumerable<Token> cSyntaxTokens, Token closeParenToken)
-    : SyntaxNode(pragmaKeywordToken.Source, pragmaKeywordToken.Range)
+    : SyntaxNode(pragmaKeywordToken)
 {
     public Token PragmaKeywordToken { get; } = pragmaKeywordToken;
     public Token CStringToken { get; } = cStringToken;

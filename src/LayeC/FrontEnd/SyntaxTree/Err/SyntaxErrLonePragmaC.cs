@@ -1,7 +1,7 @@
 ﻿namespace LayeC.FrontEnd.SyntaxTree.Err;
 
 public sealed class SyntaxErrLonePragmaC(Token pragmaKeywordToken, Token cStringToken)
-    : SyntaxNode(pragmaKeywordToken.Source, pragmaKeywordToken.Range)
+    : SyntaxNode(pragmaKeywordToken)
 {
     public Token PragmaKeywordToken { get; } = pragmaKeywordToken;
     public Token CStringToken { get; } = cStringToken;

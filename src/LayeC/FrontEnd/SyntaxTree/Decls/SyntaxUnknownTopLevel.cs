@@ -1,7 +1,7 @@
 ﻿namespace LayeC.FrontEnd.SyntaxTree.Decls;
 
 public sealed class SyntaxUnknownTopLevel(IEnumerable<SyntaxNode> associatedNodes, Token token)
-    : SyntaxNode(token.Source, token.Range)
+    : SyntaxNode(token)
 {
     public IReadOnlyList<SyntaxNode> AssociatedNodes { get; } = [.. associatedNodes];
     public Token Token { get; } = token;

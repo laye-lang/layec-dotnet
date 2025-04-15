@@ -146,7 +146,7 @@ public static class FrontEndDiagnostics
     }
 
     public static void ErrorCanOnlyStringizeParameters(this CompilerContext context, Token token, Token hashToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "3021", hashToken.Source, hashToken.Location, [token.Range], "'#' must be followed by a parameter name or '__VA_ARGS__'.");
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3023", hashToken.Source, hashToken.Location, [token.Range], "'#' must be followed by a parameter name or '__VA_ARGS__'.");
 
     #endregion
 
@@ -166,6 +166,9 @@ public static class FrontEndDiagnostics
 
     public static void ErrorIdentifierIsInvalidInModuleName(this CompilerContext context, Token token) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "4004", token.Source, token.Location, [], "Only ASCII identifiers can form module names.");
+
+    public static void ErrorExpectedType(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4005", source, location, [], "Expected a type.");
 
     #endregion
 
