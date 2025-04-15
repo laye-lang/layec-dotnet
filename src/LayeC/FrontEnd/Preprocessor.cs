@@ -1170,7 +1170,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         else if (directiveName == "undef")
             HandleUndefDirective();
         else if (directiveName == "include")
-            HandleIncludeDirective(language, preprocessorToken, directiveToken);
+            HandleIncludeDirective(language, preprocessorToken, directiveToken, false);
+        else if (directiveName == "include_next")
+            HandleIncludeDirective(language, preprocessorToken, directiveToken, true);
         else if (directiveName == "if" && language == SourceLanguage.C)
             HandleIfDirective(preprocessorToken, directiveToken);
         else if (directiveName == "ifdef" && language == SourceLanguage.C)
@@ -1324,9 +1326,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
     private readonly HashSet<SourceText> _includeGuard = [];
     private readonly Dictionary<SourceText, string> _includeGuardMacroNames = [];
 
-    private void HandleIncludeDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
+    private void HandleIncludeDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken, bool includeNext)
     {
         var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        if (includeNext)
+            Context.ExtIncludeNext(directiveToken);
 
         Token includePathToken;
         using (var _ = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPHasHeaderNames))
@@ -1341,11 +1346,10 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return;
         }
 
-        var includeSource = Context.GetSourceTextForIncludeFilePath(
-            (string)includePathToken.StringValue,
-            includePathToken.Kind == TokenKind.CPPHeaderName ? IncludeKind.System : IncludeKind.Local,
-            includePathToken.Source.Name
-        );
+        IncludeKind includeKind = includePathToken.Kind == TokenKind.CPPHeaderName ? IncludeKind.System : IncludeKind.Local;
+        if (includeNext) includeKind |= IncludeKind.IncludeNext;
+
+        var includeSource = Context.GetSourceTextForIncludeFilePath((string)includePathToken.StringValue, includeKind, includePathToken.Source.Name);
 
         if (includeSource is null)
         {
@@ -1848,6 +1852,35 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     }
 
                     return 0;
+                }
+
+                case TokenKind.CPPIdentifier when (token.StringValue == "__has_include" || token.StringValue == "__has_include_next") && At(TokenKind.OpenParen):
+                {
+                    bool isIncludeNext = token.StringValue == "__has_include_next";
+
+                    if (isIncludeNext)
+                        Context.ExtHasIncludeNext(token);
+                    else Context.ExtHasInclude(token);
+
+                    Consume();
+
+                    Token includePathToken;
+                    using (_ts.Lexer.PushMode(_ts.Lexer.State | LexerState.CPPHasHeaderNames))
+                        includePathToken = Consume();
+                    Expect("')'", TokenKind.CloseParen);
+
+                    if (includePathToken.Kind is not (TokenKind.LiteralString or TokenKind.CPPHeaderName))
+                    {
+                        Context.ErrorExpectedToken(includePathToken.Source, includePathToken.Location, "a header name");
+                        return 0;
+                    }
+
+                    string includeFilePath;
+                    if (includePathToken.Kind == TokenKind.LiteralString)
+                        includeFilePath = _pp.Context.IncludePaths.ResolveIncludePath((string)includePathToken.StringValue, includePathToken.Source.Name, out bool _, ref isIncludeNext);
+                    else includeFilePath = _pp.Context.IncludePaths.ResolveIncludePath((string)includePathToken.StringValue, out bool _, ref isIncludeNext);
+
+                    return B(File.Exists(includeFilePath));
                 }
 
                 case TokenKind.CPPIdentifier:

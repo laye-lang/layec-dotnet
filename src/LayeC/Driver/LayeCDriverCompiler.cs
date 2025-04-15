@@ -22,6 +22,24 @@ public sealed class LayeCDriverCompiler
         return new LayeCDriverCompiler(programName, context, options);
     }
 
+    private static DirectoryInfo? FindRelativeDirectory(DirectoryInfo relativeToDir, params string[] relativeDirPaths)
+    {
+        DirectoryInfo? searchDir = relativeToDir;
+        while (searchDir is not null)
+        {
+            foreach (string relativeDirPath in relativeDirPaths)
+            {
+                var checkDir = searchDir.ChildDirectory(relativeDirPath);
+                if (checkDir.Exists)
+                    return checkDir;
+            }
+
+            searchDir = searchDir.Parent;
+        }
+
+        return null;
+    }
+
     public LayeCDriverCompilerOptions Options { get; set; }
 
     private LayeCDriverCompiler(string programName, CompilerContext context, LayeCDriverCompilerOptions options)
@@ -97,10 +115,25 @@ Options:
         return 0;
     }
 
+    private void PrepareShit()
+    {
+        var compilerIncludeDir = FindRelativeDirectory(SelfExeDir, "include/laye");
+        var compilerLibDir = FindRelativeDirectory(SelfExeDir, "lib/laye");
+
+        if (compilerIncludeDir is not null)
+        {
+            var compilerLibcIncludeDir = compilerIncludeDir.ChildDirectory("libc");
+            if (compilerLibcIncludeDir.Exists)
+                Options.IncludePaths.AddSystemIncludePath(compilerLibcIncludeDir.FullName, true);
+        }
+    }
+
     public override int Execute()
     {
         if (Options.ShowHelp)
             return ShowHelp();
+
+        PrepareShit();
 
         var languageOptions = new LanguageOptions();
         languageOptions.SetDefaults(Context, Options.Standards);

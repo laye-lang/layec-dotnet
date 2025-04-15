@@ -51,7 +51,16 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Extension, "1006", exprToken.Source, exprToken.Location, [], $"'__has_feature' is a Clang extension.");
 
     public static void ExtHasExtension(this CompilerContext context, Token exprToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1007", exprToken.Source, exprToken.Location, [], $"'__has_extension' is a Clang extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1007", exprToken.Source, exprToken.Location, [], $"'__has_extension' is a non-standard extension.");
+
+    public static void ExtIncludeNext(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1008", directiveToken.Source, directiveToken.Location, [], $"'#include_next' is a non-standard extension.");
+
+    public static void ExtHasInclude(this CompilerContext context, Token exprToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1009", exprToken.Source, exprToken.Location, [], $"'__has_include' is a non-standard extension.");
+
+    public static void ExtHasIncludeNext(this CompilerContext context, Token exprToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1010", exprToken.Source, exprToken.Location, [], $"'__has_include_next' is a non-standard extension.");
 
     #endregion
 

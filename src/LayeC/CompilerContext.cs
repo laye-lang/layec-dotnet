@@ -9,10 +9,12 @@ using LayeC.Source;
 
 namespace LayeC;
 
+[Flags]
 public enum IncludeKind
 {
-    System,
-    Local,
+    System = 0,
+    Local = 1 << 0,
+    IncludeNext = 1 << 2,
 }
 
 public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target target)
@@ -39,12 +41,13 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
     public SourceText? GetSourceTextForIncludeFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
     {
         bool isSystemHeader;
-        if (kind == IncludeKind.Local)
+        bool includeNext = kind.HasFlag(IncludeKind.IncludeNext);
+        if (kind.HasFlag(IncludeKind.Local))
         {
             Assert(relativeToPath is not null, "Cannot resolve a local include path if there was no relative path provided.");
-            filePath = IncludePaths.ResolveIncludePath(filePath, relativeToPath, out isSystemHeader);
+            filePath = IncludePaths.ResolveIncludePath(filePath, relativeToPath, out isSystemHeader, ref includeNext);
         }
-        else filePath = IncludePaths.ResolveIncludePath(filePath, out isSystemHeader);
+        else filePath = IncludePaths.ResolveIncludePath(filePath, out isSystemHeader, ref includeNext);
 
         if (!File.Exists(filePath))
             return null;

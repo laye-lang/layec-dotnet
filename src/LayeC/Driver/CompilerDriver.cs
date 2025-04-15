@@ -5,6 +5,9 @@ namespace LayeC.Driver;
 public abstract class CompilerDriver(string programName, DiagnosticEngine diagnosticEngine)
     : IDisposable
 {
+    public static string SelfExePath => System.Reflection.Assembly.GetExecutingAssembly().Location;
+    public static DirectoryInfo SelfExeDir => new FileInfo(SelfExePath).Directory!;
+
     public string ProgramName { get; set; } = programName;
     public DiagnosticEngine Diag { get; } = diagnosticEngine;
 

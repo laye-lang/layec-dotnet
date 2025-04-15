@@ -11,9 +11,11 @@ public sealed class IncludePaths
         _quoteIncludePaths.Add(path);
     }
 
-    public void AddSystemIncludePath(string path)
+    public void AddSystemIncludePath(string path, bool prepend = false)
     {
-        _systemIncludePaths.Add(path);
+        if (prepend)
+            _systemIncludePaths.Insert(0, path);
+        else _systemIncludePaths.Add(path);
     }
 
     public void AddIncludePath(string path)
@@ -21,29 +23,29 @@ public sealed class IncludePaths
         _includePaths.Add(path);
     }
 
-    public string ResolveIncludePath(string filePath, string relativeToPath, out bool isSystemHeader)
+    public string ResolveIncludePath(string filePath, string relativeToPath, out bool isSystemHeader, ref bool includeNext)
     {
         isSystemHeader = false;
 
-        if (ResolveLocalIncludePath(ref filePath, relativeToPath))
+        if (ResolveLocalIncludePath(ref filePath, relativeToPath, ref includeNext))
             return filePath;
 
-        return ResolveIncludePath(filePath, out isSystemHeader);
+        return ResolveIncludePath(filePath, out isSystemHeader, ref includeNext);
     }
 
-    public string ResolveIncludePath(string filePath, out bool isSystemHeader)
+    public string ResolveIncludePath(string filePath, out bool isSystemHeader, ref bool includeNext)
     {
-        if (ResolveIncludePath(ref filePath, out isSystemHeader))
+        if (ResolveIncludePath(ref filePath, out isSystemHeader, ref includeNext))
             return filePath;
 
-        if (ResolveEnvironmentIncludePath(ref filePath, out isSystemHeader))
+        if (ResolveEnvironmentIncludePath(ref filePath, out isSystemHeader, ref includeNext))
             return filePath;
 
         isSystemHeader = false;
         return filePath;
     }
 
-    private bool ResolveLocalIncludePath(ref string filePath, string relativeToPath)
+    private bool ResolveLocalIncludePath(ref string filePath, string relativeToPath, ref bool includeNext)
     {
         var relativeDir = new FileInfo(relativeToPath).Directory;
         var siblingFile = relativeDir?.ChildFile(filePath);
@@ -58,6 +60,12 @@ public sealed class IncludePaths
             string localFilePath = Path.Combine(localIncludePath, filePath);
             if (File.Exists(localFilePath))
             {
+                if (includeNext)
+                {
+                    includeNext = false;
+                    continue;
+                }
+
                 filePath = localFilePath;
                 return true;
             }
@@ -66,7 +74,7 @@ public sealed class IncludePaths
         return false;
     }
 
-    private bool ResolveIncludePath(ref string filePath, out bool isSystemHeader)
+    private bool ResolveIncludePath(ref string filePath, out bool isSystemHeader, ref bool includeNext)
     {
         isSystemHeader = false;
 
@@ -75,6 +83,12 @@ public sealed class IncludePaths
             string systemFilePath = Path.Combine(systemIncludePath, filePath);
             if (File.Exists(systemFilePath))
             {
+                if (includeNext)
+                {
+                    includeNext = false;
+                    continue;
+                }
+
                 isSystemHeader = true;
                 filePath = systemFilePath;
                 return true;
@@ -86,6 +100,12 @@ public sealed class IncludePaths
             string systemFilePath = Path.Combine(includePath, filePath);
             if (File.Exists(systemFilePath))
             {
+                if (includeNext)
+                {
+                    includeNext = false;
+                    continue;
+                }
+
                 isSystemHeader = false;
                 filePath = systemFilePath;
                 return true;
@@ -95,7 +115,7 @@ public sealed class IncludePaths
         return false;
     }
 
-    private bool ResolveEnvironmentIncludePath(ref string filePath, out bool isSystemHeader)
+    private bool ResolveEnvironmentIncludePath(ref string filePath, out bool isSystemHeader, ref bool includeNext)
     {
         isSystemHeader = false;
 
@@ -108,6 +128,12 @@ public sealed class IncludePaths
             string systemFilePath = Path.Combine(systemIncludePath, filePath);
             if (File.Exists(systemFilePath))
             {
+                if (includeNext)
+                {
+                    includeNext = false;
+                    continue;
+                }
+
                 filePath = systemFilePath;
                 return true;
             }
