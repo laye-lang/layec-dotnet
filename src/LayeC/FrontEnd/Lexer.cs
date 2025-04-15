@@ -20,6 +20,18 @@ public enum LexerState
     /// Flag set to indicate that the lexer can, when reading C tokens, accept header names with angle-bracket delimiters.
     /// </summary>
     CPPHasHeaderNames = 1 << 1,
+
+    /// <summary>
+    /// Flag set to indicate we're in a conditional branch that was not selected by the preprocessor.
+    /// This will suppress lexer error messages, but otherwise continue on as normal.
+    /// </summary>
+    CPPWithinRejectedBranch = 1 << 2,
+}
+
+public sealed class PreprocessorIfState(Token directiveToken)
+{
+    public Token IfDirectiveToken { get; } = directiveToken;
+    public bool HasBranchBeenTaken { get; set; } = false;
 }
 
 public sealed class Lexer(CompilerContext context, SourceText source, LanguageOptions languageOptions)
@@ -33,6 +45,13 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
     public LexerState State { get; set; } = LexerState.None;
 
     public SourceLocation EndOfFileLocation { get; } = new(source.Length);
+
+    #region Public PP Condition Tracking
+
+    public Stack<PreprocessorIfState> PreprocessorIfStates { get; } = [];
+    public int PreprocessorIfDepth => PreprocessorIfStates.Count;
+
+    #endregion
 
     #region Source Character Processing
 
@@ -128,7 +147,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
     #region Lexer State Management
 
-    public int PreprocessorIfDepth { get; private set; }
+    private bool SuppressDiagnostics => State.HasFlag(LexerState.CPPWithinRejectedBranch);
 
     public IDisposable PushMode(SourceLanguage language) => PushMode(language, State);
     public IDisposable PushMode(LexerState state) => PushMode(Language, state);
@@ -233,7 +252,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                         else Advance();
                     }
 
-                    if (depth > 0)
+                    if (depth > 0 && !SuppressDiagnostics)
                         Context.ErrorUnclosedComment(Source, beginLocation);
 
                     _trivia.Add(new TriviumDelimitedComment(Source, GetRange(beginLocation)));
@@ -278,7 +297,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
         if (IsAtEnd)
         {
-            return new(TokenKind.EndOfFile, Language, Source, GetRange(beginLocation))
+            return new(State.HasFlag(LexerState.CPPWithinDirective) ? TokenKind.CPPDirectiveEnd : TokenKind.EndOfFile, Language, Source, GetRange(beginLocation))
             {
                 LeadingTrivia = leadingTrivia,
                 TrailingTrivia = TriviaList.EmptyTrailing,
@@ -321,7 +340,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                     Advance();
                 }
 
-                if (!TryAdvance('>'))
+                if (!TryAdvance('>') && !SuppressDiagnostics)
                     Context.ErrorExpectedMatchingCloseDelimiter(Source, '<', '>', CurrentLocation, beginLocation);
 
                 stringValue = tokenTextBuilder.ToString();
@@ -356,7 +375,8 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 {
                     if (CurrentCharacter == '\n')
                     {
-                        Context.ErrorUnclosedStringOrCharacterLiteral(Source, CurrentLocation, delimiter == '"' ? "string" : "character");
+                        if (!SuppressDiagnostics)
+                            Context.ErrorUnclosedStringOrCharacterLiteral(Source, CurrentLocation, delimiter == '"' ? "string" : "character");
                         goto done_lexing_string_or_character;
                     }
                     else if (CurrentCharacter == '\\')
@@ -377,7 +397,7 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                             case '\\': Advance(); tokenTextBuilder.Append('\\'); break;
                             case '\"': Advance(); tokenTextBuilder.Append('\"'); break;
                             case '\'': Advance(); tokenTextBuilder.Append('\''); break;
-                            default: Context.ErrorUnrecognizedEscapeSequence(Source, escapeLocation); break;
+                            default: if (!SuppressDiagnostics) Context.ErrorUnrecognizedEscapeSequence(Source, escapeLocation); break;
                         }
                     }
                     else
@@ -387,11 +407,11 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                     }
                 }
 
-                if (!TryAdvance(delimiter))
+                if (!TryAdvance(delimiter) && !SuppressDiagnostics)
                     Context.ErrorExpectedMatchingCloseDelimiter(Source, delimiter, delimiter, CurrentLocation, beginLocation);
 
             done_lexing_string_or_character:;
-                if (delimiter == '\'' && tokenTextBuilder.Length != 1)
+                if (delimiter == '\'' && tokenTextBuilder.Length != 1 && !SuppressDiagnostics)
                     Context.ErrorTooManyCharactersInCharacterLiteral(Source, beginLocation);
 
                 stringValue = tokenTextBuilder.ToString();
@@ -631,7 +651,8 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
 
             default:
             {
-                Context.ErrorUnexpectedCharacter(Source, beginLocation);
+                if (!SuppressDiagnostics)
+                    Context.ErrorUnexpectedCharacter(Source, beginLocation);
                 tokenKind = TokenKind.UnexpectedCharacter;
                 Advance();
             } break;
@@ -652,20 +673,16 @@ public sealed class Lexer(CompilerContext context, SourceText source, LanguageOp
                 tokenKind = TokenKind.KWBoolSized;
                 integerValue = int.Parse(stringValue[4..]);
 
-#pragma warning disable IDE0078 // Use pattern matching
-                if (integerValue < 1 || integerValue >= 65535)
+                if ((integerValue < 1 || integerValue >= 65535) && !SuppressDiagnostics)
                     Context.ErrorBitWidthOutOfRange(Source, beginLocation);
-#pragma warning restore IDE0078 // Use pattern matching
             }
             else if (stringValue.StartsWith("int") && stringValue[3..].All(char.IsAsciiDigit))
             {
                 tokenKind = TokenKind.KWIntSized;
                 integerValue = int.Parse(stringValue[3..]);
 
-#pragma warning disable IDE0078 // Use pattern matching
-                if (integerValue < 1 || integerValue >= 65535)
+                if ((integerValue < 1 || integerValue >= 65535) && !SuppressDiagnostics)
                     Context.ErrorBitWidthOutOfRange(Source, beginLocation);
-#pragma warning restore IDE0078 // Use pattern matching
             }
         }
 

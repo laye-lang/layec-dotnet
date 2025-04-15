@@ -289,8 +289,11 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         {
             case LexerTokenStream lexerStream:
             {
-                if (lexerStream.Lexer.PreprocessorIfDepth > 0)
-                    Context.ErrorMissingEndif(lexerStream.Lexer.Source, lexerStream.Lexer.EndOfFileLocation);
+                while (lexerStream.Lexer.PreprocessorIfDepth > 0)
+                {
+                    var state = lexerStream.Lexer.PreprocessorIfStates.Pop();
+                    Context.ErrorUnclosedConditionalDirective(state.IfDirectiveToken);
+                }
             } break;
 
             case BufferTokenStream bufferStream:
@@ -379,9 +382,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         {
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
 
-            var directiveToken = ReadTokenRaw();
-            using var lexerPreprocessorState = lexer.PushMode(lexer.State | LexerState.CPPWithinDirective);
-            DispatchDirectiveParser(SourceLanguage.C, directiveToken);
+            using (lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
+            {
+                var directiveToken = ReadTokenRaw();
+                DispatchDirectiveParser(SourceLanguage.C, directiveToken);
+            }
+
             return null;
         }
 
@@ -399,15 +405,18 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
                 var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
 
-                var directiveToken = ReadTokenRaw();
+                Token directiveToken;
+                using (lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
+                    directiveToken = ReadTokenRaw();
+
                 if (directiveToken.Kind == TokenKind.LiteralString && directiveToken.StringValue == "C")
                 {
                     return HandlePragmaC(false, lexer, ppToken, directiveToken);
                 }
                 else
                 {
-                    using var lexerPreprocessorState = lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective);
-                    DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
+                    using (lexer.PushMode(SourceLanguage.C, lexer.State | LexerState.CPPWithinDirective))
+                        DispatchDirectiveParser(SourceLanguage.Laye, directiveToken);
                     return null;
                 }
             }
@@ -1158,6 +1167,22 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             HandleUndefDirective();
         else if (directiveName == "include")
             HandleIncludeDirective(language, preprocessorToken, directiveToken);
+        else if (directiveName == "if" && language == SourceLanguage.C)
+            HandleIfDirective(preprocessorToken, directiveToken);
+        else if (directiveName == "ifdef" && language == SourceLanguage.C)
+            HandleIfdefDirective(preprocessorToken, directiveToken, true);
+        else if (directiveName == "ifndef" && language == SourceLanguage.C)
+            HandleIfdefDirective(preprocessorToken, directiveToken, false);
+        else if (directiveName == "elif" && language == SourceLanguage.C)
+            HandleElifDirective(preprocessorToken, directiveToken);
+        else if (directiveName == "elifdef" && language == SourceLanguage.C)
+            HandleElifdefDirective(preprocessorToken, directiveToken, true);
+        else if (directiveName == "elifndef" && language == SourceLanguage.C)
+            HandleElifdefDirective(preprocessorToken, directiveToken, false);
+        else if (directiveName == "else" && language == SourceLanguage.C)
+            HandleElseDirective(preprocessorToken, directiveToken);
+        else if (directiveName == "endif" && language == SourceLanguage.C)
+            HandleEndifDirective(preprocessorToken, directiveToken);
         else if (directiveName == "pragma" && language == SourceLanguage.C)
             HandlePragmaDirective(language, preprocessorToken, directiveToken);
         else
@@ -1340,6 +1365,182 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (language == SourceLanguage.C)
             AddCIncludeLexerFromC(includeSource);
         else AddCIncludeLexerFromLaye(includeSource, preprocessorToken);
+    }
+
+    private void SkipTokensUntilNextValidConditionalDirective()
+    {
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        Token? preprocessorToken = null;
+        Token? directiveToken = null;
+
+        int ifNesting = 0;
+        using (lexer.PushMode(lexer.State | LexerState.CPPWithinRejectedBranch))
+        {
+            while (!lexer.IsAtEnd)
+            {
+                var token = lexer.ReadNextPPToken();
+                if (token is { Kind: TokenKind.Hash, IsAtStartOfLine: true })
+                {
+                    using (lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
+                    {
+                        var nextToken = lexer.ReadNextPPToken();
+                        if (nextToken is not { Kind: TokenKind.CPPIdentifier })
+                            continue;
+
+                        if (nextToken.StringValue == "if" || nextToken.StringValue == "ifdef" || nextToken.StringValue == "ifndef")
+                            ifNesting++;
+                        else if (nextToken.StringValue == "else" || nextToken.StringValue == "elif" || nextToken.StringValue == "elifdef" || nextToken.StringValue == "elifndef")
+                        {
+                            if (ifNesting == 0)
+                            {
+                                preprocessorToken = token;
+                                directiveToken = nextToken;
+                                break;
+                            }
+                        }
+                        else if (nextToken.StringValue == "endif")
+                        {
+                            if (ifNesting == 0)
+                            {
+                                preprocessorToken = token;
+                                directiveToken = nextToken;
+                                break;
+                            }
+                            else ifNesting--;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (preprocessorToken is not null && directiveToken is not null)
+        {
+            using (lexer.PushMode(lexer.State | LexerState.CPPWithinDirective))
+                HandleDirective(SourceLanguage.C, preprocessorToken, directiveToken);
+        }
+
+        // if we get here without handling a directive, we'll report a missing #endif when we pop this buffer
+    }
+
+    private void HandleIfDirective(Token preprocessorToken, Token directiveToken)
+    {
+        Context.Todo(nameof(HandleIfDirective));
+    }
+
+    private void HandleIfdefDirective(Token preprocessorToken, Token directiveToken, bool isIfdef)
+    {
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        Token macroName = ReadTokenRaw();
+        if (SkipRemainingDirectiveTokens(macroName))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        bool isDefined;
+        if (macroName.Kind != TokenKind.CPPIdentifier)
+        {
+            Context.ErrorExpectedMacroName(macroName.Source, macroName.Location);
+            isDefined = false;
+        }
+        else isDefined = _macroDefs.ContainsKey(macroName.StringValue);
+
+        bool isBranchChosen = isDefined == isIfdef;
+
+        var ifState = new PreprocessorIfState(directiveToken) { HasBranchBeenTaken = isBranchChosen };
+        lexer.PreprocessorIfStates.Push(ifState);
+
+        // if we passed the condition (based on which directive was used), continue to lex and preprocess tokens like normal.
+        if (isBranchChosen)
+            return;
+
+        SkipTokensUntilNextValidConditionalDirective();
+    }
+
+    private void HandleElifDirective(Token preprocessorToken, Token directiveToken)
+    {
+        Context.Todo(nameof(HandleElifDirective));
+    }
+
+    private void HandleElifdefDirective(Token preprocessorToken, Token directiveToken, bool isElifdef)
+    {
+        if (!LanguageOptions.CIsC23)
+        {
+            if (isElifdef)
+                Context.ExtElifdef(directiveToken);
+            else Context.ExtElifndef(directiveToken);
+        }
+
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        Token macroName = ReadTokenRaw();
+        if (SkipRemainingDirectiveTokens(macroName))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        bool isDefined;
+        if (macroName.Kind != TokenKind.CPPIdentifier)
+        {
+            Context.ErrorExpectedMacroName(macroName.Source, macroName.Location);
+            isDefined = false;
+        }
+        else isDefined = _macroDefs.ContainsKey(macroName.StringValue);
+
+        if (lexer.PreprocessorIfDepth == 0)
+        {
+            Context.ErrorConditionalDirectiveWithoutIf(directiveToken);
+            return;
+        }
+
+        var state = lexer.PreprocessorIfStates.Peek();
+        if (!state.HasBranchBeenTaken)
+        {
+            bool isBranchChosen = isDefined == isElifdef;
+
+            // if we passed the condition (based on which directive was used), continue to lex and preprocess tokens like normal.
+            if (isBranchChosen)
+            {
+                state.HasBranchBeenTaken = true;
+                return;
+            }
+        }
+
+        SkipTokensUntilNextValidConditionalDirective();
+    }
+
+    private void HandleElseDirective(Token preprocessorToken, Token directiveToken)
+    {
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        if (SkipRemainingDirectiveTokens(null))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (lexer.PreprocessorIfDepth == 0)
+        {
+            Context.ErrorConditionalDirectiveWithoutIf(directiveToken);
+            return;
+        }
+
+        var state = lexer.PreprocessorIfStates.Peek();
+        // if all other branches failed, continue to lex and preprocess tokens like normal.
+        // we hit a branch, finally.
+        if (!state.HasBranchBeenTaken) return;
+
+        SkipTokensUntilNextValidConditionalDirective();
+    }
+
+    private void HandleEndifDirective(Token preprocessorToken, Token directiveToken)
+    {
+        var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
+
+        if (SkipRemainingDirectiveTokens(null))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (lexer.PreprocessorIfDepth == 0)
+        {
+            Context.ErrorConditionalDirectiveWithoutIf(directiveToken);
+            return;
+        }
+
+        lexer.PreprocessorIfStates.Pop();
     }
 
     private void HandlePragmaDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)

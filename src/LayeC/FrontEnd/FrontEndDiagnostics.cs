@@ -41,6 +41,12 @@ public static class FrontEndDiagnostics
     public static void ExtPragmaOnce(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Extension, "1003", source, location, [], "'#pragma once' is a non-standard C extension.");
 
+    public static void ExtElifdef(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1004", directiveToken.Source, directiveToken.Location, [], $"'#elifdef' is a C23 extension.");
+
+    public static void ExtElifndef(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1005", directiveToken.Source, directiveToken.Location, [], $"'#elifndef' is a C23 extension.");
+
     #endregion
 
     #region 2XXX - Lexical Diagnostics
@@ -97,8 +103,8 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Note, "3008", source, macroDefToken.Location, [], $"Macro '{macroDefToken.StringValue}' defined here.");
     }
 
-    public static void ErrorMissingEndif(this CompilerContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Error, "3009", source, location, [], "Missing '#endif' at end of file.");
+    public static void ErrorUnclosedConditionalDirective(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3009", directiveToken.Source, directiveToken.Location, [], "Unclosed conditional directive.");
 
     public static void ErrorVariadicTokenInNonVariadicMacro(this CompilerContext context, Token token) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3010", token.Source, token.Location, [], $"'{token.Spelling}' can only be used within a variadic macro.");
@@ -147,6 +153,9 @@ public static class FrontEndDiagnostics
 
     public static void ErrorCanOnlyStringizeParameters(this CompilerContext context, Token token, Token hashToken) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3023", hashToken.Source, hashToken.Location, [token.Range], "'#' must be followed by a parameter name or '__VA_ARGS__'.");
+
+    public static void ErrorConditionalDirectiveWithoutIf(this CompilerContext context, Token directiveToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3024", directiveToken.Source, directiveToken.Location, [], $"'#{directiveToken.Spelling}' directive does not have matching '#if'.");
 
     #endregion
 
