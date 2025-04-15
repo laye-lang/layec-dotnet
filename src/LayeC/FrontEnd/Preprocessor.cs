@@ -1191,6 +1191,10 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             HandleEndifDirective(preprocessorToken, directiveToken);
         else if (directiveName == "pragma" && language == SourceLanguage.C)
             HandlePragmaDirective(language, preprocessorToken, directiveToken);
+        else if (directiveName == "warning" && language == SourceLanguage.C)
+            HandleDiagnosticDirective(language, preprocessorToken, directiveToken);
+        else if (directiveName == "error" && language == SourceLanguage.C)
+            HandleDiagnosticDirective(language, preprocessorToken, directiveToken);
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
@@ -1619,6 +1623,27 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         // let's not worry about warning for extra tokens on unrecognized pragmas
         // or even warning that we don't recognize it at all, for now.
         SkipRemainingDirectiveTokens(token);
+    }
+
+    private void HandleDiagnosticDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
+    {
+        var tokens = new List<Token>();
+
+        var token = ReadTokenRaw();
+        while (token.Kind is not (TokenKind.CPPDirectiveEnd or TokenKind.EndOfFile))
+        {
+            tokens.Add(token);
+            token = ReadTokenRaw();
+        }
+
+        // just in fuckin case
+        SkipRemainingDirectiveTokens(token);
+
+        var diagnosticMessageToken = StringizeTokens(tokens, directiveToken, directiveToken);
+        Context.Assert(diagnosticMessageToken.Kind == TokenKind.LiteralString, "Expected stringize operation to create a literal string.");
+
+        var diagLevel = directiveToken.StringValue == "warning" ? DiagnosticLevel.Warning : DiagnosticLevel.Error;
+        Context.Diag.Emit(diagLevel, directiveToken.Source, directiveToken.Location, (string)diagnosticMessageToken.StringValue);
     }
 
     private void DefineDirectiveCheckHash(ParsedMacroData macroData, int tokenIndex)
