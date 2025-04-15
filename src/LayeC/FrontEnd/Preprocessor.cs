@@ -1192,9 +1192,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         else if (directiveName == "pragma" && language == SourceLanguage.C)
             HandlePragmaDirective(language, preprocessorToken, directiveToken);
         else if (directiveName == "warning" && language == SourceLanguage.C)
-            HandleDiagnosticDirective(language, preprocessorToken, directiveToken);
+            HandleDiagnosticDirective(language, preprocessorToken, directiveToken, DiagnosticLevel.Warning);
         else if (directiveName == "error" && language == SourceLanguage.C)
-            HandleDiagnosticDirective(language, preprocessorToken, directiveToken);
+            HandleDiagnosticDirective(language, preprocessorToken, directiveToken, DiagnosticLevel.Error);
         else
         {
             Context.ErrorUnknownPreprocessorDirective(directiveToken.Source, directiveToken.Location);
@@ -1625,7 +1625,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         SkipRemainingDirectiveTokens(token);
     }
 
-    private void HandleDiagnosticDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken)
+    private void HandleDiagnosticDirective(SourceLanguage language, Token preprocessorToken, Token directiveToken, DiagnosticLevel diagLevel)
     {
         var tokens = new List<Token>();
 
@@ -1642,7 +1642,6 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         var diagnosticMessageToken = StringizeTokens(tokens, directiveToken, directiveToken);
         Context.Assert(diagnosticMessageToken.Kind == TokenKind.LiteralString, "Expected stringize operation to create a literal string.");
 
-        var diagLevel = directiveToken.StringValue == "warning" ? DiagnosticLevel.Warning : DiagnosticLevel.Error;
         Context.Diag.Emit(diagLevel, directiveToken.Source, directiveToken.Location, (string)diagnosticMessageToken.StringValue);
     }
 
