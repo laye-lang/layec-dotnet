@@ -37,6 +37,7 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
     public Triple Triple { get; } = triple;
 
     public required IncludePaths IncludePaths { get; init; }
+    public List<StringView> PreprocessorDefines { get; } = [];
 
     private readonly Dictionary<string, SourceText> _fileCache = [];
 
@@ -45,9 +46,17 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
         var pp = new Preprocessor(this, languageOptions, mode);
         if (source is not null) pp.PushSourceTokenStream(source);
 
-        if (false)
+        if (PreprocessorDefines.Count > 0)
         {
             var commandLineDefinesBuilder = new StringBuilder();
+            foreach (StringView ppDefine in PreprocessorDefines)
+            {
+                int eqIndex = ppDefine.IndexOf('=');
+                if (eqIndex < 0)
+                    commandLineDefinesBuilder.AppendLine($"define {ppDefine}");
+                else commandLineDefinesBuilder.AppendLine($"define {ppDefine[..eqIndex]} {ppDefine[(eqIndex + 1)..]}");
+            }
+
             var cliSource = new SourceText("<command-line>", commandLineDefinesBuilder.ToString(), SourceLanguage.C);
             pp.PushSourceTokenStream(cliSource);
         }
