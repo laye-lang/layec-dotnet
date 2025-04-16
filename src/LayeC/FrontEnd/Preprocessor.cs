@@ -17,7 +17,7 @@ public enum PreprocessorMode
     /// <summary>
     /// A minimal mode, for use when reading module header information from Laye source files.
     /// Alternatively, this is useful to explicitly *not* preprocess a source file due to user input, e.g. when the source is already the result of preprocessing.
-    /// 
+    ///
     /// Disables macro expansions and directive parsing entirely, but maintains the language switching of 'pragma "C"` in Laye.
     /// Again, remember that any embedded C code will not be preprocessed, only lexed and converted to valid tokens without preprocessing.
     /// </summary>
@@ -58,7 +58,7 @@ public sealed class Preprocessor
             case TokenKind.UnexpectedCharacter: builder.Append("<?>"); break;
 
             case TokenKind.EndOfFile: builder.Append("<EOF>"); break;
-            
+
             case TokenKind.CPPIdentifier: builder.Append((string)token.Spelling); break;
             case TokenKind.CPPNumber: builder.Append((string)token.Spelling); break;
             case TokenKind.CPPVAOpt: builder.Append("__VA_OPT__"); break;
@@ -169,6 +169,8 @@ public sealed class Preprocessor
     private delegate bool BuiltInMacroFunction(Token ppToken);
     private readonly Dictionary<StringView, BuiltInMacroFunction> _builtInMacros;
 
+    private readonly List<StringView> _reservedPPNames;
+
     public Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
     {
         Context = context;
@@ -179,6 +181,19 @@ public sealed class Preprocessor
         {
             { "__FILE__", HandleFileBuiltInMacro },
             { "__LINE__", HandleLineBuiltInMacro },
+        };
+
+        // NOTE(nic): consider adding `__DATE__` and `__TIME__` (and others like that) later
+        _reservedPPNames = new()
+        {
+            "__FILE__",
+            "__LINE__",
+            "__VA_ARGS__",
+            "__VA_OPT__",
+            "__has_feature",
+            "__has_include",
+            "__has_include_next",
+            "defined",
         };
     }
 
@@ -1239,7 +1254,7 @@ public sealed class Preprocessor
         if (directiveName == "define")
             HandleDefineDirective();
         else if (directiveName == "undef")
-            HandleUndefDirective();
+            HandleUndefDirective(directiveToken);
         else if (directiveName == "include")
             HandleIncludeDirective(language, preprocessorToken, directiveToken, false);
         else if (directiveName == "include_next")
@@ -1376,6 +1391,12 @@ public sealed class Preprocessor
             }
         }
 
+        if (_reservedPPNames.Contains(macroData.Name))
+        {
+            Context.ErrorCannotDefineReservedName(macroNameToken.Source, macroNameToken.Location);
+            return;
+        }
+
         _macroDefs[macroData.Name] = new PreprocessorMacroDefinition(macroData.NameToken, macroData.Tokens, macroData.ParameterNames)
         {
             IsFunctionLike = macroData.IsFunctionLike,
@@ -1384,7 +1405,7 @@ public sealed class Preprocessor
         };
     }
 
-    private void HandleUndefDirective()
+    private void HandleUndefDirective(Token directiveToken)
     {
         var macroNameToken = ReadTokenRaw();
         if (macroNameToken.Kind != TokenKind.CPPIdentifier)
@@ -1394,8 +1415,16 @@ public sealed class Preprocessor
             return;
         }
 
+        if (SkipRemainingDirectiveTokens(null))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (_reservedPPNames.Contains(macroNameToken.StringValue))
+        {
+            Context.ErrorCannotUndefineReservedName(macroNameToken.Source, macroNameToken.Location);
+            return;
+        }
+
         _macroDefs.Remove(macroNameToken.StringValue);
-        SkipRemainingDirectiveTokens(null);
     }
 
     private readonly HashSet<SourceText> _includeGuard = [];
@@ -1756,7 +1785,7 @@ public sealed class Preprocessor
 
         var openParenToken = token;
         tokenIndex++;
-        
+
         token = SafeGetToken(tokenIndex);
         if (token.Kind == TokenKind.HashHash)
             Context.ErrorConcatenationTokenCannotStartVAOpt(token);

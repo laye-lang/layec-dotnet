@@ -184,6 +184,12 @@ public static class FrontEndDiagnostics
     public static void ErrorFunctionLikeMacroIsNotDefined(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3028", source, location, [], "Function-like macro is not defined.");
 
+    public static void ErrorCannotDefineReservedName(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3029", source, location, [], "Cannot define reserved name.");
+
+    public static void ErrorCannotUndefineReservedName(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "3030", source, location, [], "Cannot undefine reserved name.");
+
     #endregion
 
     #region 4XXX - Syntactic Diagnostics
