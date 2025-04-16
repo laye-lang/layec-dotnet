@@ -196,8 +196,8 @@ Options:
         if (Context.Diag.HasEmittedErrors)
             return 1;
 
-        if (Options.DriverStage == DriverStage.Parse)
-            return ParseOnly();
+        if (Options.DriverStage == DriverStage.Sema)
+            return SemaOnly();
 
         Context.Diag.Emit(DiagnosticLevel.Warning, "The full compilation pipeline is not yet implemented. Stopping early.");
         Context.Diag.Emit(DiagnosticLevel.Note, "You can use options such as '-E', '--parse' etc. to explicitly stop at an earlier stage.");
@@ -252,7 +252,7 @@ Options:
             return 0;
         }
 
-        int ParseOnly()
+        int SemaOnly()
         {
             if (TryGetOutputTextWriterForEarlyStage() is not { } outputWriter)
                 return 1;
