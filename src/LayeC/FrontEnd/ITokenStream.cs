@@ -32,9 +32,8 @@ public sealed class BufferTokenStream(Token[] tokens, PreprocessorMacroDefinitio
 {
     public static BufferTokenStream CreateFromFullPreprocess(CompilerContext context, LanguageOptions languageOptions, SourceText source)
     {
-        var pp = new Preprocessor(context, languageOptions, PreprocessorMode.Full);
-        var tokens = pp.PreprocessSource(source);
-        return new BufferTokenStream(tokens);
+        var pp = context.CreatePreprocessor(languageOptions, source, PreprocessorMode.Full);
+        return new BufferTokenStream(pp.Preprocess());
     }
 
     public PreprocessorMacroDefinition? SourceMacro { get; } = sourceMacro;

@@ -19,6 +19,7 @@ public sealed class CDriverOptions
     public List<(string Name, FileInfo File)> InputFiles { get; set; } = [];
 
     public LanguageStandardKinds Standards { get; set; }
+    public Triple Triple { get; set; } = Triple.DefaultTripleForHost();
 
     public IncludePaths IncludePaths { get; set; } = new();
 

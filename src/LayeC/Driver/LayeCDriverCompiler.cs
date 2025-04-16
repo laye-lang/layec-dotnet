@@ -14,7 +14,7 @@ public sealed class LayeCDriverCompiler
 {
     public static LayeCDriverCompiler Create(DiagnosticConsumerProvider diagProvider, LayeCDriverCompilerOptions options, string programName = "dnlayec")
     {
-        var context = new CompilerContext(diagProvider(options.OutputColoring), Target.X86_64)
+        var context = new CompilerContext(diagProvider(options.OutputColoring), Target.X86_64, options.Triple)
         {
             IncludePaths = options.IncludePaths,
         };
@@ -246,8 +246,8 @@ Options:
         for (int i = 0; i < inputSources.Length; i++)
         {
             var source = inputSources[i];
-            var preprocessor = new Preprocessor(Context, languageOptions);
-            sourceTokens.Add(preprocessor.PreprocessSource(source));
+            var preprocessor = Context.CreatePreprocessor(languageOptions, source);
+            sourceTokens.Add(preprocessor.Preprocess());
         }
 
         if (Context.Diag.HasEmittedErrors)
@@ -308,8 +308,8 @@ Options:
             {
                 var source = inputSources[i];
 
-                var preprocessor = new Preprocessor(Context, languageOptions);
-                var tokens = preprocessor.PreprocessSource(source);
+                var preprocessor = Context.CreatePreprocessor(languageOptions, source);
+                var tokens = preprocessor.Preprocess();
 
                 if (Context.Diag.HasEmittedErrors)
                     continue;
@@ -378,6 +378,7 @@ public sealed class LayeCDriverCompilerOptions
     public List<LayeCInputFile> InputFiles { get; set; } = [];
 
     public LanguageStandardKinds Standards { get; set; }
+    public Triple Triple { get; set; } = Triple.DefaultTripleForHost();
 
     public IncludePaths IncludePaths { get; set; } = new();
 

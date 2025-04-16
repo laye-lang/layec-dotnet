@@ -1,5 +1,4 @@
 ﻿using LayeC.Diagnostics;
-using LayeC.Source;
 
 namespace LayeC.Driver;
 
@@ -16,7 +15,7 @@ public sealed class CDriver
 
     public static CDriver Create(DiagnosticConsumerProvider diagProvider, CDriverOptions options, string programName = "dncc")
     {
-        var context = new CompilerContext(diagProvider(options.OutputColoring), Target.X86_64)
+        var context = new CompilerContext(diagProvider(options.OutputColoring), Target.X86_64, options.Triple)
         {
             IncludePaths = options.IncludePaths,
         };

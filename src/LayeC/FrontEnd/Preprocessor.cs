@@ -166,10 +166,8 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     public bool IsAtEnd => _tokenStreams.Count == 0;
 
-    public Token[] PreprocessSource(SourceText source)
+    public Token[] Preprocess()
     {
-        PushSourceTokenStream(source);
-
         var tokens = new List<Token>();
         while (!IsAtEnd)
         {
@@ -190,7 +188,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
     public void PushSourceTokenStream(SourceText source)
     {
-        Context.Assert(_tokenStreams.Count == 0, "There should be no token streams left when preprocessing a new source file.");
+        //Context.Assert(_tokenStreams.Count == 0, "There should be no token streams left when preprocessing a new source file.");
         PushTokenStream(new LexerTokenStream(new(Context, source, LanguageOptions)));
     }
 
@@ -198,6 +196,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
     {
         var ppToken = ReadAndExpandToken();
         return ConvertPPToken(ppToken);
+    }
+
+    public void Define(StringView macroName)
+    {
+        var nameToken = new Token(TokenKind.CPPIdentifier, SourceLanguage.C, SourceText.Unknown, SourceRange.Zero);
+        _macroDefs[macroName] = new PreprocessorMacroDefinition(nameToken, [], []);
     }
 
     #region Implementation
@@ -1097,7 +1101,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         }
 
         var source = new SourceText("<paste>", concatText, SourceLanguage.C);
-        var proxyContext = new CompilerContext(VoidDiagnosticConsumer.Instance, Context.Target) { IncludePaths = Context.IncludePaths };
+        var proxyContext = new CompilerContext(VoidDiagnosticConsumer.Instance, Context.Target, Context.Triple) { IncludePaths = Context.IncludePaths };
         var lexer = new Lexer(proxyContext, source, LanguageOptions);
         var pastedToken = lexer.ReadNextPPToken();
         pastedToken.LeadingTrivia = leftToken.LeadingTrivia;

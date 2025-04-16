@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 using LayeC.Diagnostics;
 using LayeC.Formatting;
@@ -17,7 +18,7 @@ public enum IncludeKind
     IncludeNext = 1 << 2,
 }
 
-public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target target)
+public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target target, Triple triple)
 {
     private readonly Dictionary<DiagnosticSemantic, DiagnosticLevel> _semanticLevels = new()
     {
@@ -33,10 +34,147 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
 
     public DiagnosticEngine Diag { get; } = new(diagConsumer);
     public Target Target { get; } = target;
+    public Triple Triple { get; } = triple;
 
     public required IncludePaths IncludePaths { get; init; }
 
     private readonly Dictionary<string, SourceText> _fileCache = [];
+
+    public Preprocessor CreatePreprocessor(LanguageOptions languageOptions, SourceText? source, PreprocessorMode mode = PreprocessorMode.Full)
+    {
+        var pp = new Preprocessor(this, languageOptions, mode);
+        if (source is not null) pp.PushSourceTokenStream(source);
+
+        if (false)
+        {
+            var commandLineDefinesBuilder = new StringBuilder();
+            var cliSource = new SourceText("<command-line>", commandLineDefinesBuilder.ToString(), SourceLanguage.C);
+            pp.PushSourceTokenStream(cliSource);
+        }
+
+        var now = DateTime.Now;
+
+        var builtInDefinesBuilder = new StringBuilder();
+        builtInDefinesBuilder.AppendLine("#define __STDC__ 1");
+        builtInDefinesBuilder.AppendLine("#define __STDC_HOSTED__ 1");
+        builtInDefinesBuilder.AppendLine($"#define __DATE__ \"{now:MMM dd yyyy}\"");
+        builtInDefinesBuilder.AppendLine($"#define __TIME__ \"{now:HH:mm:ss}\"");
+        builtInDefinesBuilder.AppendLine("#define __LAYEC__ 1");
+
+        switch (languageOptions.Standards.C)
+        {
+            case LanguageStandardKind.C89:
+            {
+            } break;
+            
+            case LanguageStandardKind.C94:
+            {
+                builtInDefinesBuilder.AppendLine("#define __STDC_VERSION__ 199409L");
+            } break;
+            
+            case LanguageStandardKind.C99:
+            {
+                builtInDefinesBuilder.AppendLine("#define __STDC_VERSION__ 199901L");
+            } break;
+            
+            case LanguageStandardKind.C11:
+            {
+                builtInDefinesBuilder.AppendLine("#define __STDC_VERSION__ 201112L");
+            } break;
+            
+            case LanguageStandardKind.C17:
+            {
+                builtInDefinesBuilder.AppendLine("#define __STDC_VERSION__ 201710L");
+            } break;
+            
+            case LanguageStandardKind.C23:
+            {
+                builtInDefinesBuilder.AppendLine("#define __STDC_VERSION__ 202311L");
+            } break;
+
+            default: break;
+        }
+
+        switch (Triple.Arch)
+        {
+            case Triple.ArchKind.X86:
+            {
+                builtInDefinesBuilder.AppendLine("#define i386");
+                builtInDefinesBuilder.AppendLine("#define __i386");
+                builtInDefinesBuilder.AppendLine("#define __i386__");
+                builtInDefinesBuilder.AppendLine("#define _M_IX86");
+                builtInDefinesBuilder.AppendLine("#define __X86__");
+                builtInDefinesBuilder.AppendLine("#define _X86_");
+            } break;
+
+            case Triple.ArchKind.X86_64:
+            {
+                builtInDefinesBuilder.AppendLine("#define __amd64__");
+                builtInDefinesBuilder.AppendLine("#define __amd64");
+                builtInDefinesBuilder.AppendLine("#define __x86_64__");
+                builtInDefinesBuilder.AppendLine("#define __x86_64");
+                builtInDefinesBuilder.AppendLine("#define _M_X64");
+                builtInDefinesBuilder.AppendLine("#define _M_AMD64");
+            } break;
+
+            case Triple.ArchKind.Wasm32:
+            {
+                builtInDefinesBuilder.AppendLine("#define __WASM__");
+                builtInDefinesBuilder.AppendLine("#define __WASM32__");
+                builtInDefinesBuilder.AppendLine("#define __wasm 1");
+                builtInDefinesBuilder.AppendLine("#define __wasm__ 1");
+                builtInDefinesBuilder.AppendLine("#define __wasm32 1");
+                builtInDefinesBuilder.AppendLine("#define __wasm32__ 1");
+            } break;
+
+            case Triple.ArchKind.Wasm64:
+            {
+                builtInDefinesBuilder.AppendLine("#define __WASM__");
+                builtInDefinesBuilder.AppendLine("#define __WASM64__");
+                builtInDefinesBuilder.AppendLine("#define __wasm 1");
+                builtInDefinesBuilder.AppendLine("#define __wasm__ 1");
+                builtInDefinesBuilder.AppendLine("#define __wasm64 1");
+                builtInDefinesBuilder.AppendLine("#define __wasm64__ 1");
+            } break;
+        }
+
+        switch (Triple.OS)
+        {
+            case Triple.OSKind.Linux:
+            {
+                builtInDefinesBuilder.AppendLine("#define __linux__");
+                builtInDefinesBuilder.AppendLine("#define __unix__");
+                builtInDefinesBuilder.AppendLine("#define __unix");
+
+                builtInDefinesBuilder.AppendLine("#define __INT64_TYPE__ long");
+                builtInDefinesBuilder.AppendLine("#define __INT32_TYPE__ int");
+                builtInDefinesBuilder.AppendLine("#define __INT16_TYPE__ short");
+                builtInDefinesBuilder.AppendLine("#define __INT8_TYPE__ signed char");
+                builtInDefinesBuilder.AppendLine("#define __SIZE_TYPE__ unsigned long");
+                builtInDefinesBuilder.AppendLine("#define __PTRDIFF_TYPE__ long");
+                builtInDefinesBuilder.AppendLine("#define __WCHAR_TYPE__ int");
+            } break;
+
+            case Triple.OSKind.Windows:
+            {
+                builtInDefinesBuilder.AppendLine("#define _WIN32");
+                builtInDefinesBuilder.AppendLine("#define _WIN64");
+
+                builtInDefinesBuilder.AppendLine("#define __INT64_TYPE__ long long");
+                builtInDefinesBuilder.AppendLine("#define __INT32_TYPE__ int");
+                builtInDefinesBuilder.AppendLine("#define __INT16_TYPE__ short");
+                builtInDefinesBuilder.AppendLine("#define __INT8_TYPE__ signed char");
+                builtInDefinesBuilder.AppendLine("#define __SIZE_TYPE__ unsigned long long");
+                builtInDefinesBuilder.AppendLine("#define __PTRDIFF_TYPE__ long long");
+                builtInDefinesBuilder.AppendLine("#define __WCHAR_TYPE__ unsigned short");
+            } break;
+        }
+
+        var builtInSource = new SourceText("<built-in>", builtInDefinesBuilder.ToString(), SourceLanguage.C);
+        pp.PushSourceTokenStream(builtInSource);
+
+        return pp;
+    }
 
     public SourceText? GetSourceTextForIncludeFilePath(string filePath, IncludeKind kind, string? relativeToPath = null)
     {

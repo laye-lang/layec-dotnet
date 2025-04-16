@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 namespace LayeC;
 
@@ -8,6 +9,15 @@ public readonly struct Triple
 {
     public static bool operator ==(Triple left, Triple right) => left.Equals(right);
     public static bool operator !=(Triple left, Triple right) => !left.Equals(right);
+
+    public static Triple DefaultTripleForHost()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return Parse("x86_64-pc-windows-msvc");
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return Parse("x86_64-unknown-linux-gnu");
+        else return Parse("unknown");
+    }
 
     public static bool TryParse([NotNullWhen(true)] string? triple, [MaybeNullWhen(false)] out Triple result)
     {
