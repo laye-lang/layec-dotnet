@@ -708,6 +708,22 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (ppToken.DisableExpansion)
             return false;
 
+        if (ppToken.Source.Language == SourceLanguage.C && ppToken.StringValue == "__FILE__")
+        {
+            Token[] tokens = [
+                new Token(TokenKind.LiteralString, SourceLanguage.C, ppToken.Source, ppToken.Range)
+                {
+                    Spelling = ppToken.Source.Name,
+                    StringValue = ppToken.Source.Name,
+                    LeadingTrivia = ppToken.LeadingTrivia,
+                    TrailingTrivia = ppToken.TrailingTrivia,
+                },
+            ];
+
+            PushTokenStream(new BufferTokenStream(tokens));
+            return true;
+        }
+
         var leadingTrivia = ppToken.LeadingTrivia;
         var macroDef = GetExpandableMacroAndArguments(ppToken.StringValue, out var arguments, out var trailingTrivia);
         if (macroDef is null || macroDef.IsExpanding)
