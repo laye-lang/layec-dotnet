@@ -1,7 +1,10 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 using LayeC.Diagnostics;
 using LayeC.FrontEnd;
+using LayeC.Source;
 
 namespace LayeC.Driver;
 
@@ -117,9 +120,155 @@ Options:
         var languageOptions = new LanguageOptions();
         languageOptions.SetDefaultsOnlyC(Context, Options.Standard);
 
-        Context.Todo("C compiler driver impl");
+        SourceText inputSource;
+        if (Options.ReadFromStandardInput)
+        {
+            Context.Assert(Options.InputFile is null, "Should not have allowed both standard input reading *and* an input file list past options parsing.");
 
+            var inputKind = Options.StandardInputKind;
+            if (inputKind == InputFileKind.Unknown)
+                inputKind = InputFileKind.CSource;
+
+            var inputLanguage = inputKind.SourceLanguage();
+            if (inputLanguage != SourceLanguage.C)
+            {
+                Context.Diag.Emit(DiagnosticLevel.Error, "Standard input must contain only C source text.");
+                return 1;
+            }
+
+            if (inputKind == InputFileKind.CSourceNoPP)
+            {
+                Context.Todo("Handle no-preprocess mode for C source inputs.");
+                throw new UnreachableException();
+            }
+
+            string stdinSourceText = Console.In.ReadToEnd();
+            inputSource = new SourceText("<stdin>", stdinSourceText, inputLanguage);
+        }
+        else
+        {
+            Context.Assert(Options.InputFile is not null, "how did we get here?");
+
+            var inputFile = Options.InputFile.FileInfo;
+            var inputKind = Options.InputFile.Kind;
+            Context.Assert(inputKind != InputFileKind.Unknown, "The input type of a positional input file should have been inferred by the options parser if not provided.");
+
+            Context.Assert(inputKind is InputFileKind.CSource or InputFileKind.CSourceNoPP, "The options parser should've limited our input file kinds to C sources.");
+
+            string sourceText = inputFile.ReadAllText();
+            inputSource = new SourceText(Options.InputFile.InputName, sourceText, SourceLanguage.C);
+        }
+
+        string? outputFile = Options.OutputFile;
+        if (outputFile is null)
+        {
+            string outputFileNameOnly = Options.ReadFromStandardInput ? "a" : Path.GetFileNameWithoutExtension(Options.InputFile!.InputName);
+            if (Options.DriverStage == DriverStage.Assemble)
+                outputFile = outputFileNameOnly + ".mod";
+            else if (Options.DriverStage == DriverStage.Compile)
+            {
+                switch (Options.AssemblerFormat)
+                {
+                    case AssemblerFormat.GAS: outputFile = outputFileNameOnly + ".s"; break;
+                    case AssemblerFormat.NASM: outputFile = outputFileNameOnly + ".nasm"; break;
+                    case AssemblerFormat.FASM: outputFile = outputFileNameOnly + ".fasm"; break;
+                    case AssemblerFormat.LLVM: outputFile = outputFileNameOnly + ".ll"; break;
+                    case AssemblerFormat.QBE: outputFile = outputFileNameOnly + ".ssa"; break;
+
+                    default:
+                    {
+                        Context.Diag.Emit(DiagnosticLevel.Fatal, $"Unknown assembler format '{Options.AssemblerFormat}'.");
+                        throw new UnreachableException();
+                    }
+                }
+            }
+            else outputFile = "-";
+        }
+
+        Context.Assert(Options.DriverStage != DriverStage.Lex, "No lex-only implemented.");
+
+        if (Options.DriverStage == DriverStage.Preprocess)
+            return PreprocessOnly();
+
+        var preprocessor = Context.CreatePreprocessor(languageOptions, inputSource);
+        Token[] sourceTokens = preprocessor.Preprocess();
+
+        if (Context.Diag.HasEmittedErrors)
+            return 1;
+
+        if (Options.DriverStage == DriverStage.Parse)
+            return ParseOnly();
+
+        Context.Diag.Emit(DiagnosticLevel.Warning, "The full compilation pipeline is not yet implemented. Stopping early.");
+        Context.Diag.Emit(DiagnosticLevel.Note, "You can use options such as '-E', '--parse' etc. to explicitly stop at an earlier stage.");
+        Context.Diag.Emit(DiagnosticLevel.Note, $"See '{ProgramName} --help' for information on the available options.");
         return 0;
+
+        TextWriter? TryGetOutputTextWriterForEarlyStage()
+        {
+            Context.Assert(outputFile is not null, "Should have 'resolved' an output file by now.");
+
+            if (outputFile is "-")
+                return Console.Out;
+            else if (OpenOutputStream(out var outputStream))
+                return new StreamWriter(outputStream);
+
+            return null;
+
+            bool OpenOutputStream([NotNullWhen(true)] out Stream? stream)
+            {
+                Context.Assert(outputFile is not null or "-", "Can only open output file stream when a file path is present and not '-'.");
+                try
+                {
+                    stream = File.OpenWrite(outputFile);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    stream = null;
+                    Context.Diag.Emit(DiagnosticLevel.Error, $"Could not open output file '{Options.OutputFile}': {ex.Message}.");
+                    return false;
+                }
+            }
+        }
+
+        int PreprocessOnly()
+        {
+            if (TryGetOutputTextWriterForEarlyStage() is not { } outputWriter)
+                return 1;
+
+            var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
+            var ppOutputWriter = new PreprocessedOutputWriter(outputWriter, Options.IncludeCommentsInPreprocessedOutput);
+
+            var preprocessor = Context.CreatePreprocessor(languageOptions, inputSource);
+            var tokens = preprocessor.Preprocess();
+
+            if (Context.Diag.HasEmittedErrors)
+                return 1;
+
+            if (Options.PrintTokens)
+                tokens.ForEach(debugPrinter.PrintToken);
+            else tokens.ForEach(ppOutputWriter.WriteToken);
+            return 0;
+        }
+
+        int ParseOnly()
+        {
+            if (TryGetOutputTextWriterForEarlyStage() is not { } outputWriter)
+                return 1;
+
+            var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
+
+            Context.Todo("Parse C");
+            //var parser = new LayeParser(Context, languageOptions, inputSource, new BufferTokenStream(sourceTokens));
+            //var moduleUnit = parser.ParseModuleUnit();
+
+            if (Context.Diag.HasEmittedErrors)
+                return 1;
+
+            //debugPrinter.PrintModuleUnit(moduleUnit);
+            return 0;
+        }
     }
 }
 
@@ -138,7 +287,7 @@ public sealed class CDriverOptions
     public string? OutputFile { get; set; } = null;
     public bool ReadFromStandardInput { get; set; } = false;
     public InputFileKind StandardInputKind { get; set; } = InputFileKind.Unknown;
-    public List<LayeCInputFile> InputFiles { get; set; } = [];
+    public LayeCInputFile? InputFile { get; set; }
 
     public LanguageStandardKind Standard { get; set; }
     public Triple Triple { get; set; } = Triple.DefaultTripleForHost();
@@ -154,10 +303,10 @@ public sealed class CDriverOptions
 
         if (!ShowHelp)
         {
-            if (ReadFromStandardInput && InputFiles.Count != 0)
-                diag.Emit(DiagnosticLevel.Error, "Cannot read from standard input while input files are also specified.");
+            if (ReadFromStandardInput && InputFile is not null)
+                diag.Emit(DiagnosticLevel.Error, "Cannot read from standard input while an input file is also specified.");
 
-            if (!ReadFromStandardInput && InputFiles.Count == 0)
+            if (!ReadFromStandardInput && InputFile is null)
                 diag.Emit(DiagnosticLevel.Error, "No source files provided.");
         }
     }
@@ -216,12 +365,19 @@ public sealed class CDriverOptions
             } break;
         }
 
-        InputFiles.Add(new LayeCInputFile()
+        if (InputFile is not null)
+        {
+            diag.Emit(DiagnosticLevel.Error, "Only a single input file is allowed.");
+            diag.Emit(DiagnosticLevel.Note, "Currently, this is not a dedicated compiler driver.");
+            return;
+        }
+
+        InputFile = new LayeCInputFile()
         {
             Kind = inputKind,
             InputName = value,
             FileInfo = fileInfo,
-        });
+        };
     }
 
     protected override void HandleArgument(string arg, DiagnosticEngine diag, CliArgumentIterator args, CDriverOptionsParseState state)

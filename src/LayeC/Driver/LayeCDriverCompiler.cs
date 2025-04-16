@@ -149,7 +149,7 @@ Options:
                 inputKind = InputFileKind.LayeSource;
 
             var inputLanguage = inputKind.SourceLanguage();
-            if (inputLanguage == SourceLanguage.None)
+            if (inputLanguage != SourceLanguage.Laye)
             {
                 Context.Diag.Emit(DiagnosticLevel.Error, "Standard input must contain only Laye source text.");
                 return 1;
