@@ -750,6 +750,19 @@ public sealed class Preprocessor
         else return null;
     }
 
+    private bool IsBuiltInMacroName(StringView macroName)
+    {
+        return _builtInMacros.ContainsKey(macroName);
+    }
+
+    private bool IsMacroDefined(StringView macroName)
+    {
+        if (IsBuiltInMacroName(macroName))
+            return true;
+
+        return _macroDefs.ContainsKey(macroName);
+    }
+
     private bool MaybeExpandMacro(Token ppToken, bool parenMustBeDirectlyAdjacent = true)
     {
         Context.Assert(ppToken.Kind == TokenKind.CPPIdentifier, "Can only attempt to expand C preprocessor identifiers.");
@@ -1527,7 +1540,7 @@ public sealed class Preprocessor
             Context.ErrorExpectedMacroName(macroName.Source, macroName.Location);
             isDefined = false;
         }
-        else isDefined = _macroDefs.ContainsKey(macroName.StringValue);
+        else isDefined = IsMacroDefined(macroName.StringValue);
 
         bool isBranchChosen = isDefined == isIfdef;
 
@@ -1592,7 +1605,7 @@ public sealed class Preprocessor
             Context.ErrorExpectedMacroName(macroName.Source, macroName.Location);
             isDefined = false;
         }
-        else isDefined = _macroDefs.ContainsKey(macroName.StringValue);
+        else isDefined = IsMacroDefined(macroName.StringValue);
 
         if (lexer.PreprocessorIfDepth == 0)
         {
@@ -1906,7 +1919,7 @@ public sealed class Preprocessor
                             return 0;
                         }
 
-                        return B(_pp._macroDefs.ContainsKey(macroToken.StringValue));
+                        return B(_pp.IsMacroDefined(macroToken.StringValue));
                     }
 
                     var macroNameToken = Consume();
@@ -1916,7 +1929,7 @@ public sealed class Preprocessor
                         return 0;
                     }
 
-                    return B(_pp._macroDefs.ContainsKey(macroNameToken.StringValue));
+                    return B(_pp.IsMacroDefined(macroNameToken.StringValue));
                 }
 
                 case TokenKind.CPPIdentifier when token.StringValue == "__has_feature" && At(TokenKind.OpenParen):
