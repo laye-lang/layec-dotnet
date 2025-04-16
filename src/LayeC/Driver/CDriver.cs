@@ -10,10 +10,21 @@ public sealed class CDriver
 {
     public static int RunWithArgs(DiagnosticConsumerProvider diagProvider, string[] args, string programName = "dncc")
     {
-        using var parserDiag = diagProvider(ToolingOptions.OutputColoring != Trilean.False);
-        using var diag = new DiagnosticEngine(parserDiag);
-        using var driver = Create(diagProvider, CDriverOptions.Parse(diag, new CliArgumentIterator(args)), programName);
-        return driver.Execute();
+        using var driver = CreateDriver();
+        return driver?.Execute() ?? 1;
+
+        CompilerDriver? CreateDriver()
+        {
+            using var parserDiag = diagProvider(ToolingOptions.OutputColoring != Trilean.False);
+            using var diag = new DiagnosticEngine(parserDiag);
+
+            var driver = Create(diagProvider, CDriverOptions.Parse(diag, new CliArgumentIterator(args)), programName);
+
+            if (diag.HasEmittedErrors)
+                return null;
+
+            return driver;
+        }
     }
 
     public static CDriver Create(DiagnosticConsumerProvider diagProvider, CDriverOptions options, string programName = "dncc")
