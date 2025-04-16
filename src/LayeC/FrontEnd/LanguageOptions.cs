@@ -46,6 +46,18 @@ public sealed class LanguageOptions
         SetCStandardDefaults(context, standardKinds.C);
     }
 
+    public void SetDefaultsOnlyC(CompilerContext context, LanguageStandardKind standardKind)
+    {
+        if (standardKind == LanguageStandardKind.Unspecified)
+            standardKind = DefaultLanguageStandards.C;
+
+        Debug.Assert(standardKind != LanguageStandardKind.Unspecified);
+
+        Standards = (LanguageStandardKind.Unspecified, standardKind);
+
+        SetCStandardDefaults(context, standardKind);
+    }
+
     private void SetCStandardDefaults(CompilerContext context, LanguageStandardKind standardKind)
     {
         if (!LanguageStandard.TryGetStandard(standardKind, out var standard))

@@ -453,7 +453,6 @@ public sealed class LayeCDriverCompilerOptions
             {
                 diag.Emit(DiagnosticLevel.Error, $"Unrecognized input file extension '{fileInfo.Extension}'.");
                 diag.Emit(DiagnosticLevel.Note, "Use a recognized extension, or see the '-x' option in '--help'.");
-                diag.Emit(DiagnosticLevel.Note, "Assuming this is a Laye source file.");
             } break;
         }
 
