@@ -38,7 +38,7 @@ public sealed class PreprocessorMacroDefinition(Token nameToken, IEnumerable<Tok
     public bool IsExpanding { get; set; } = false;
 }
 
-public sealed class Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
+public sealed class Preprocessor
 {
     public static string StringizeToken(Token token, bool escape)
     {
@@ -145,14 +145,14 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         };
     }
 
-    public CompilerContext Context { get; } = context;
-    public LanguageOptions LanguageOptions { get; } = languageOptions;
+    public CompilerContext Context { get; }
+    public LanguageOptions LanguageOptions { get; }
     // TODO(local): I don't actually like how the current implementation of "Minimal" works.
     // instead of *disabling* directives, it should instead read all their tokens (according to their same rules) and return them through buffer token streams.
     // (I think).
     // This way, all tokens are preserved in the output in case it's necessary.
     // For now, this is irrelevant.
-    public PreprocessorMode Mode { get; } = mode;
+    public PreprocessorMode Mode { get; }
 
     public SourceLanguage Language
     {
@@ -165,6 +165,55 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
     }
 
     public bool IsAtEnd => _tokenStreams.Count == 0;
+
+    private delegate bool BuiltInMacroFunction(Token ppToken);
+    private readonly Dictionary<StringView, BuiltInMacroFunction> _builtInMacros;
+
+    public Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
+    {
+        Context = context;
+        LanguageOptions = languageOptions;
+        Mode = mode;
+
+        _builtInMacros = new()
+        {
+            { "__FILE__", HandleFileBuiltInMacro },
+            { "__LINE__", HandleLineBuiltInMacro },
+        };
+    }
+
+    private bool HandleFileBuiltInMacro(Token ppToken)
+    {
+        Token[] tokens = [
+            new Token(TokenKind.LiteralString, SourceLanguage.C, ppToken.Source, ppToken.Range)
+            {
+                Spelling = ppToken.Source.Name,
+                StringValue = ppToken.Source.Name,
+                LeadingTrivia = ppToken.LeadingTrivia,
+                TrailingTrivia = ppToken.TrailingTrivia,
+            },
+        ];
+
+        PushTokenStream(new BufferTokenStream(tokens));
+        return true;
+    }
+
+    private bool HandleLineBuiltInMacro(Token ppToken)
+    {
+        var locInfoShort = ppToken.Source.SeekLineColumn(ppToken.Location);
+
+        Token[] tokens = [
+            new Token(TokenKind.CPPNumber, SourceLanguage.C, ppToken.Source, ppToken.Range)
+            {
+                Spelling = locInfoShort.Line.ToString(),
+                LeadingTrivia = ppToken.LeadingTrivia,
+                TrailingTrivia = ppToken.TrailingTrivia,
+            },
+        ];
+
+        PushTokenStream(new BufferTokenStream(tokens));
+        return true;
+    }
 
     public Token[] Preprocess()
     {
@@ -708,20 +757,9 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (ppToken.DisableExpansion)
             return false;
 
-        if (ppToken.Source.Language == SourceLanguage.C && ppToken.StringValue == "__FILE__")
+        if (_builtInMacros.TryGetValue(ppToken.StringValue, out var macroFunction))
         {
-            Token[] tokens = [
-                new Token(TokenKind.LiteralString, SourceLanguage.C, ppToken.Source, ppToken.Range)
-                {
-                    Spelling = ppToken.Source.Name,
-                    StringValue = ppToken.Source.Name,
-                    LeadingTrivia = ppToken.LeadingTrivia,
-                    TrailingTrivia = ppToken.TrailingTrivia,
-                },
-            ];
-
-            PushTokenStream(new BufferTokenStream(tokens));
-            return true;
+            return macroFunction(ppToken);
         }
 
         var leadingTrivia = ppToken.LeadingTrivia;
