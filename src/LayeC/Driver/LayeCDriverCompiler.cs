@@ -22,24 +22,6 @@ public sealed class LayeCDriverCompiler
         return new LayeCDriverCompiler(programName, context, options);
     }
 
-    private static DirectoryInfo? FindRelativeDirectory(DirectoryInfo relativeToDir, params string[] relativeDirPaths)
-    {
-        DirectoryInfo? searchDir = relativeToDir;
-        while (searchDir is not null)
-        {
-            foreach (string relativeDirPath in relativeDirPaths)
-            {
-                var checkDir = searchDir.ChildDirectory(relativeDirPath);
-                if (checkDir.Exists)
-                    return checkDir;
-            }
-
-            searchDir = searchDir.Parent;
-        }
-
-        return null;
-    }
-
     public LayeCDriverCompilerOptions Options { get; set; }
 
     private LayeCDriverCompiler(string programName, CompilerContext context, LayeCDriverCompilerOptions options)

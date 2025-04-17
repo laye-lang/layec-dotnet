@@ -16,7 +16,10 @@
 	<PropertyGroup Condition="$(Configuration)=='Release'">
 		<DebugType>none</DebugType>
 		<GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+		<!--
 		<IlcDisableReflection>true</IlcDisableReflection>
+		-->
+		<EventSourceSupport>false</EventSourceSupport>
 		<IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
 		<IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
 		<IlcOptimizationPreference>Size</IlcOptimizationPreference>

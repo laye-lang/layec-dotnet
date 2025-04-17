@@ -112,10 +112,25 @@ Options:
         return 0;
     }
 
+    private void PrepareShit()
+    {
+        var compilerIncludeDir = FindRelativeDirectory(SelfExeDir, "include/laye");
+        var compilerLibDir = FindRelativeDirectory(SelfExeDir, "lib/laye");
+
+        if (compilerIncludeDir is not null)
+        {
+            var compilerLibcIncludeDir = compilerIncludeDir.ChildDirectory("libc");
+            if (compilerLibcIncludeDir.Exists)
+                Options.IncludePaths.AddSystemIncludePath(compilerLibcIncludeDir.FullName, true);
+        }
+    }
+
     public override int Execute()
     {
         if (Options.ShowHelp)
             return ShowHelp();
+
+        PrepareShit();
 
         var languageOptions = new LanguageOptions();
         languageOptions.SetDefaultsOnlyC(Context, Options.Standard);
