@@ -1,30 +1,8 @@
-#if defined(__FILE__)
-int urmom();
-#endif
+#include "./bat.h"
+WHATEVER
 
-#ifdef __FILE__
-int urmom();
-#endif
+#define FOO __FILE__
+#define BAR __LINE__
 
-#ifdef __URMOM__
-int urmom();
-#elifdef __LINE__
-int noturmmom();
-#endif
-
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__FILE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
-__LINE__
+FOO
+BAR

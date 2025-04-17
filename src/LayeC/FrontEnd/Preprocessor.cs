@@ -166,7 +166,7 @@ public sealed class Preprocessor
 
     public bool IsAtEnd => _tokenStreams.Count == 0;
 
-    private delegate bool BuiltInMacroFunction(Token ppToken);
+    private delegate void BuiltInMacroFunction(Token sourceToken, Token builtInToken, List<Token> output);
     private readonly Dictionary<StringView, BuiltInMacroFunction> _builtInMacros;
 
     private readonly List<StringView> _reservedPPNames;
@@ -197,37 +197,31 @@ public sealed class Preprocessor
         };
     }
 
-    private bool HandleFileBuiltInMacro(Token ppToken)
+    private void HandleFileBuiltInMacro(Token sourceToken, Token builtInToken, List<Token> output)
     {
-        Token[] tokens = [
-            new Token(TokenKind.LiteralString, SourceLanguage.C, ppToken.Source, ppToken.Range)
-            {
-                Spelling = ppToken.Source.Name,
-                StringValue = ppToken.Source.Name,
-                LeadingTrivia = ppToken.LeadingTrivia,
-                TrailingTrivia = ppToken.TrailingTrivia,
-            },
-        ];
+        Token token = new Token(TokenKind.LiteralString, SourceLanguage.C, builtInToken.Source, builtInToken.Range)
+        {
+            Spelling = sourceToken.Source.Name,
+            StringValue = sourceToken.Source.Name,
+            LeadingTrivia = builtInToken.LeadingTrivia,
+            TrailingTrivia = builtInToken.TrailingTrivia,
+        };
 
-        PushTokenStream(new BufferTokenStream(tokens));
-        return true;
+        output.Add(token);
     }
 
-    private bool HandleLineBuiltInMacro(Token ppToken)
+    private void HandleLineBuiltInMacro(Token sourceToken, Token builtInToken, List<Token> output)
     {
-        var locInfoShort = ppToken.Source.SeekLineColumn(ppToken.Location);
+        var locInfoShort = sourceToken.Source.SeekLineColumn(sourceToken.Location);
 
-        Token[] tokens = [
-            new Token(TokenKind.CPPNumber, SourceLanguage.C, ppToken.Source, ppToken.Range)
-            {
-                Spelling = locInfoShort.Line.ToString(),
-                LeadingTrivia = ppToken.LeadingTrivia,
-                TrailingTrivia = ppToken.TrailingTrivia,
-            },
-        ];
+        Token token = new Token(TokenKind.CPPNumber, SourceLanguage.C, builtInToken.Source, builtInToken.Range)
+        {
+            Spelling = locInfoShort.Line.ToString(),
+            LeadingTrivia = builtInToken.LeadingTrivia,
+            TrailingTrivia = builtInToken.TrailingTrivia,
+        };
 
-        PushTokenStream(new BufferTokenStream(tokens));
-        return true;
+        output.Add(token);
     }
 
     public Token[] Preprocess()
@@ -787,7 +781,10 @@ public sealed class Preprocessor
 
         if (_builtInMacros.TryGetValue(ppToken.StringValue, out var macroFunction))
         {
-            return macroFunction(ppToken);
+            List<Token> tokens = new();
+            macroFunction(ppToken, ppToken, tokens);
+            PushTokenStream(new BufferTokenStream(tokens));
+            return true;
         }
 
         var leadingTrivia = ppToken.LeadingTrivia;
@@ -840,6 +837,24 @@ public sealed class Preprocessor
             while (expansion.Cursor < macroDef.Tokens.Count)
             {
                 var token = expansion.MacroPPTokenAtCursor;
+
+                if (token.Kind == TokenKind.CPPFile)
+                {
+                    List<Token> tokens = new();
+                    HandleFileBuiltInMacro(expansion.SourceToken, token, tokens);
+                    expansion.Append(this, tokens[0]);
+                    expansion.Cursor++;
+                    continue;
+                }
+
+                if (token.Kind == TokenKind.CPPLine)
+                {
+                    List<Token> tokens = new();
+                    HandleLineBuiltInMacro(expansion.SourceToken, token, tokens);
+                    expansion.Append(this, tokens[0]);
+                    expansion.Cursor++;
+                    continue;
+                }
 
                 // Skip '__VA_OPT__(' and mark that we're inside of __VA_OPT__.
                 if (token.Kind == TokenKind.CPPVAOpt)
@@ -993,6 +1008,24 @@ public sealed class Preprocessor
                 for (; expansion.Cursor < macroDef.Tokens.Count; expansion.Cursor++)
                 {
                     var token = expansion.MacroPPTokenAtCursor;
+                    Console.WriteLine(token.Kind);
+
+                    if (token.Kind == TokenKind.CPPFile)
+                    {
+                        List<Token> tokens = new();
+                        HandleFileBuiltInMacro(expansion.SourceToken, token, tokens);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
+                    if (token.Kind == TokenKind.CPPLine)
+                    {
+                        List<Token> tokens = new();
+                        HandleLineBuiltInMacro(expansion.SourceToken, token, tokens);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
                     // Only attempt to paste if there's actually a valid token.
                     // We error on invalid '##' placement, but allow the preprocessor to continue.
                     if (token.Kind == TokenKind.HashHash && expansion.Cursor + 1 < expansion.MacroDefinition.Tokens.Count)
@@ -1003,7 +1036,29 @@ public sealed class Preprocessor
                     else expansion.Append(this, token);
                 }
             }
-            else expansion.Expansion.AddRange(macroDef.Tokens.Select(t => t.Clone()));
+            else
+            {
+                foreach (var token in macroDef.Tokens)
+                {
+                    if (token.Kind == TokenKind.CPPFile)
+                    {
+                        List<Token> tokens = new();
+                        HandleFileBuiltInMacro(expansion.SourceToken, token, tokens);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
+                    if (token.Kind == TokenKind.CPPLine)
+                    {
+                        List<Token> tokens = new();
+                        HandleLineBuiltInMacro(expansion.SourceToken, token, tokens);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
+                    expansion.Append(this, token);
+                }
+            }
 
             PrepareExpansion(expansion, leadingTrivia, trailingTrivia);
         }
@@ -1366,6 +1421,10 @@ public sealed class Preprocessor
                     if (!LanguageOptions.CIsC23)
                         Context.ExtVAOpt(token.Source, token.Location);
                 }
+                else if (token.StringValue == "__FILE__")
+                    token.Kind = TokenKind.CPPFile;
+                else if (token.StringValue == "__LINE__")
+                    token.Kind = TokenKind.CPPLine;
                 else if (macroData.ParameterNames.Contains(token.StringValue))
                     token.Kind = TokenKind.CPPMacroParam;
             }
