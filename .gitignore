@@ -1,5 +1,6 @@
 .vs/
 .vscode/
+scratch/
 bin/
 obj/
 /src/LayeC/Properties/launchSettings.json
