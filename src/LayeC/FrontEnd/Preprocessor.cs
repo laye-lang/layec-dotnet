@@ -844,22 +844,6 @@ public sealed class Preprocessor
             {
                 var token = expansion.MacroPPTokenAtCursor;
 
-                if (token.Kind == TokenKind.CPPFile)
-                {
-                    List<Token> tokens = HandleFileBuiltInMacro(expansion.SourceToken, token);
-                    expansion.Append(this, tokens[0]);
-                    expansion.Cursor++;
-                    continue;
-                }
-
-                if (token.Kind == TokenKind.CPPLine)
-                {
-                    List<Token> tokens = HandleLineBuiltInMacro(expansion.SourceToken, token);
-                    expansion.Append(this, tokens[0]);
-                    expansion.Cursor++;
-                    continue;
-                }
-
                 // Skip '__VA_OPT__(' and mark that we're inside of __VA_OPT__.
                 if (token.Kind == TokenKind.CPPVAOpt)
                 {
@@ -947,7 +931,7 @@ public sealed class Preprocessor
                 if (token.Kind is not (TokenKind.CPPMacroParam or TokenKind.CPPVAArgs))
                 {
                     expansion.Cursor++;
-                    expansion.Append(this, token);
+                    AppendTokenToExpansion(expansion, token);
                     continue;
                 }
 
@@ -1012,21 +996,6 @@ public sealed class Preprocessor
                 for (; expansion.Cursor < macroDef.Tokens.Count; expansion.Cursor++)
                 {
                     var token = expansion.MacroPPTokenAtCursor;
-
-                    if (token.Kind == TokenKind.CPPFile)
-                    {
-                        List<Token> tokens = HandleFileBuiltInMacro(expansion.SourceToken, token);
-                        expansion.Append(this, tokens[0]);
-                        continue;
-                    }
-
-                    if (token.Kind == TokenKind.CPPLine)
-                    {
-                        List<Token> tokens = HandleLineBuiltInMacro(expansion.SourceToken, token);
-                        expansion.Append(this, tokens[0]);
-                        continue;
-                    }
-
                     // Only attempt to paste if there's actually a valid token.
                     // We error on invalid '##' placement, but allow the preprocessor to continue.
                     if (token.Kind == TokenKind.HashHash && expansion.Cursor + 1 < expansion.MacroDefinition.Tokens.Count)
@@ -1034,35 +1003,34 @@ public sealed class Preprocessor
                         expansion.Cursor++;
                         Paste(expansion, token, expansion.MacroPPTokenAtCursor);
                     }
-                    else expansion.Append(this, token);
+                    else AppendTokenToExpansion(expansion, token);
                 }
             }
             else
             {
                 foreach (var token in macroDef.Tokens)
-                {
-                    if (token.Kind == TokenKind.CPPFile)
-                    {
-                        List<Token> tokens = HandleFileBuiltInMacro(expansion.SourceToken, token);
-                        expansion.Append(this, tokens[0]);
-                        continue;
-                    }
-
-                    if (token.Kind == TokenKind.CPPLine)
-                    {
-                        List<Token> tokens = HandleLineBuiltInMacro(expansion.SourceToken, token);
-                        expansion.Append(this, tokens[0]);
-                        continue;
-                    }
-
-                    expansion.Append(this, token);
-                }
+                    AppendTokenToExpansion(expansion, token);
             }
 
             PrepareExpansion(expansion, leadingTrivia, trailingTrivia);
         }
 
         return true;
+
+        void AppendTokenToExpansion(MacroExpansion expansion, Token token)
+        {
+            if (token.Kind == TokenKind.CPPFile)
+            {
+                foreach (var t in HandleFileBuiltInMacro(expansion.SourceToken, token))
+                    expansion.Append(this, t);
+            }
+            else if (token.Kind == TokenKind.CPPLine)
+            {
+                foreach (var t in HandleLineBuiltInMacro(expansion.SourceToken, token))
+                    expansion.Append(this, t);
+            }
+            else expansion.Append(this, token);
+        }
 
         PreprocessorMacroDefinition? GetExpandableMacroAndArguments(StringView name, out Token[][] args, out TriviaList trailingTrivia)
         {
