@@ -199,10 +199,13 @@ public sealed class Preprocessor
 
     private List<Token> HandleFileBuiltInMacro(Token sourceToken, Token builtInToken)
     {
+        var spellingBuilder = new StringBuilder();
+        StringizeString(spellingBuilder, sourceToken.Source.Name, '\"');
+
         List<Token> tokens = [
             new Token(TokenKind.LiteralString, SourceLanguage.C, builtInToken.Source, builtInToken.Range)
             {
-                Spelling = sourceToken.Source.Name,
+                Spelling = spellingBuilder.ToString(),
                 StringValue = sourceToken.Source.Name,
                 LeadingTrivia = builtInToken.LeadingTrivia,
                 TrailingTrivia = builtInToken.TrailingTrivia,
