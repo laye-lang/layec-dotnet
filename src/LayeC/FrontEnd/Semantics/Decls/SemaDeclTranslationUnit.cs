@@ -1,6 +1,6 @@
 ﻿using LayeC.Source;
 
-namespace LayeC.FrontEnd.SemaTree.Decls;
+namespace LayeC.FrontEnd.Semantics.Decls;
 
 public sealed class SemaDeclTranslationUnit(SourceText source, IEnumerable<SemaDecl> topLevelDecls)
     : SemaDecl(source, SourceRange.Zero)

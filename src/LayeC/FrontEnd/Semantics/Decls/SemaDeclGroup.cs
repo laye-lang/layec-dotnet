@@ -1,6 +1,6 @@
 ﻿using LayeC.Source;
 
-namespace LayeC.FrontEnd.SemaTree.Decls;
+namespace LayeC.FrontEnd.Semantics.Decls;
 
 public sealed class SemaDeclGroup(SourceText source, SourceRange range, IEnumerable<SemaDecl> decls)
     : SemaDecl(source, range)

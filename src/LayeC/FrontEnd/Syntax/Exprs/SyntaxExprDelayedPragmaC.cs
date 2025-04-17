@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.SyntaxTree.Exprs;
+﻿namespace LayeC.FrontEnd.Syntax.Exprs;
 
 public sealed class SyntaxExprDelayedPragmaC(Token pragmaKeywordToken, Token cStringToken, Token openParenToken, IEnumerable<Token> cSyntaxTokens, Token closeParenToken)
     : SyntaxNode(pragmaKeywordToken)

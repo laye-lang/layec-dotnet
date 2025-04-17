@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-using LayeC.FrontEnd.SyntaxTree;
+using LayeC.FrontEnd.Syntax;
 
 namespace LayeC.FrontEnd;
 

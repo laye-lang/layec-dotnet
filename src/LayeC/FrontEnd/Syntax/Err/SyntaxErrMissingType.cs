@@ -1,5 +1,5 @@
 ﻿
-namespace LayeC.FrontEnd.SyntaxTree.Err;
+namespace LayeC.FrontEnd.Syntax.Err;
 
 public sealed class SyntaxErrMissingType(Token missingToken)
     : SyntaxNode(missingToken)

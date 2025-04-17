@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.SyntaxTree.Decls;
+﻿namespace LayeC.FrontEnd.Syntax.Decls;
 
 public sealed class SyntaxUnknownTopLevel(IEnumerable<SyntaxNode> associatedNodes, Token token)
     : SyntaxNode(token)

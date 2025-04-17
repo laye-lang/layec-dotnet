@@ -1,5 +1,5 @@
-﻿using LayeC.FrontEnd.SyntaxTree;
-using LayeC.FrontEnd.SyntaxTree.Decls;
+﻿using LayeC.FrontEnd.Syntax;
+using LayeC.FrontEnd.Syntax.Decls;
 
 namespace LayeC.FrontEnd;
 

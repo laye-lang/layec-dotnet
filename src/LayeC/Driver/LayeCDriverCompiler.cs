@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 using LayeC.Diagnostics;
 using LayeC.FrontEnd;
-using LayeC.FrontEnd.SyntaxTree;
+using LayeC.FrontEnd.Syntax;
 using LayeC.Source;
 
 namespace LayeC.Driver;

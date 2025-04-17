@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.SyntaxTree.Decls;
+﻿namespace LayeC.FrontEnd.Syntax.Decls;
 
 public sealed class SyntaxDeclImport(Token importKeywordToken, SyntaxModuleName moduleName, Token semiColonToken)
     : SyntaxNode(importKeywordToken.Source, importKeywordToken.Range)

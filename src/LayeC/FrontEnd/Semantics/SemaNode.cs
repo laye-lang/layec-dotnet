@@ -1,6 +1,6 @@
 ﻿using LayeC.Source;
 
-namespace LayeC.FrontEnd.SemaTree;
+namespace LayeC.FrontEnd.Semantics;
 
 public abstract class SemaNode(SourceText source, SourceRange range)
     : ITreeDebugNode

@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-using LayeC.FrontEnd.SemaTree.Decls;
+using LayeC.FrontEnd.Semantics.Decls;
 using LayeC.FrontEnd.Syntax.Decls;
 using LayeC.FrontEnd.Syntax.Meta;
 

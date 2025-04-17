@@ -1,6 +1,6 @@
 ﻿using LayeC.Source;
 
-namespace LayeC.FrontEnd.SyntaxTree;
+namespace LayeC.FrontEnd.Syntax;
 
 public abstract class SyntaxNode(SourceText source, SourceRange range)
     : ITreeDebugNode

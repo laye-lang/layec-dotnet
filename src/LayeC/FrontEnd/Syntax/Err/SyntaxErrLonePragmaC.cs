@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.SyntaxTree.Err;
+﻿namespace LayeC.FrontEnd.Syntax.Err;
 
 public sealed class SyntaxErrLonePragmaC(Token pragmaKeywordToken, Token cStringToken)
     : SyntaxNode(pragmaKeywordToken)

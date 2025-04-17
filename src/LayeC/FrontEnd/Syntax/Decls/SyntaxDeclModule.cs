@@ -2,7 +2,7 @@
 
 using LayeC.Source;
 
-namespace LayeC.FrontEnd.SyntaxTree.Decls;
+namespace LayeC.FrontEnd.Syntax.Decls;
 
 public abstract class SyntaxDeclModule(SourceText source, SourceRange range, StringView moduleName)
     : SyntaxNode(source, range)

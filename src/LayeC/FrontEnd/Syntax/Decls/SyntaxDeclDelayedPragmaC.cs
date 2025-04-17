@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.SyntaxTree.Decls;
+﻿namespace LayeC.FrontEnd.Syntax.Decls;
 
 public sealed class SyntaxDeclDelayedPragmaC(Token pragmaKeywordToken, Token cStringToken, Token openCurlyToken, IEnumerable<Token> cSyntaxTokens, Token closeCurlyToken)
     : SyntaxNode(pragmaKeywordToken.Source, pragmaKeywordToken.Range)

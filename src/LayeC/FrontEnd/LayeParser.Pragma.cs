@@ -1,7 +1,7 @@
-﻿using LayeC.FrontEnd.SyntaxTree;
-using LayeC.FrontEnd.SyntaxTree.Decls;
-using LayeC.FrontEnd.SyntaxTree.Err;
-using LayeC.FrontEnd.SyntaxTree.Exprs;
+﻿using LayeC.FrontEnd.Syntax;
+using LayeC.FrontEnd.Syntax.Decls;
+using LayeC.FrontEnd.Syntax.Err;
+using LayeC.FrontEnd.Syntax.Exprs;
 
 namespace LayeC.FrontEnd;
 

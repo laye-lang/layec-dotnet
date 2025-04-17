@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.SyntaxTree.Types;
+﻿namespace LayeC.FrontEnd.Syntax.Types;
 
 public sealed class SyntaxTypeBuiltIn(BuiltInTypeKind kind, Token token)
     : SyntaxNode(token)

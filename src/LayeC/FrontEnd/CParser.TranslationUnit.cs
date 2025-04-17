@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-using LayeC.FrontEnd.SemaTree.Decls;
+using LayeC.FrontEnd.Semantics.Decls;
 
 namespace LayeC.FrontEnd;
 

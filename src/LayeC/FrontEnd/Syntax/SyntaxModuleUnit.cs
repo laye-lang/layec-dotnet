@@ -1,7 +1,7 @@
-﻿using LayeC.FrontEnd.SyntaxTree.Decls;
+﻿using LayeC.FrontEnd.Syntax.Decls;
 using LayeC.Source;
 
-namespace LayeC.FrontEnd.SyntaxTree;
+namespace LayeC.FrontEnd.Syntax;
 
 public sealed class SyntaxModuleUnit(SourceText source, SyntaxModuleUnitHeader header, IEnumerable<SyntaxNode> topLevelNodes)
     : SyntaxNode(source, SourceRange.Zero)
