@@ -1,4 +1,5 @@
-﻿using LayeC.FrontEnd.SyntaxTree;
+﻿using LayeC.FrontEnd.SemaTree.Decls;
+using LayeC.FrontEnd.SyntaxTree;
 
 namespace LayeC.FrontEnd;
 
@@ -12,6 +13,12 @@ public sealed class SyntaxDebugTreePrinter(bool useColor)
     }
 
     public void PrintModuleUnit(SyntaxModuleUnit unit)
+    {
+        Print(unit);
+        Console.ResetColor();
+    }
+
+    public void PrintTranslationUnit(SemaDeclTranslationUnit unit)
     {
         Print(unit);
         Console.ResetColor();

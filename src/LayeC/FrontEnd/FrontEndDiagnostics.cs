@@ -10,6 +10,7 @@ namespace LayeC.FrontEnd;
 public static class FrontEndDiagnostics
 {
     private static MarkupScopedSemantic KW(string text) => new(MarkupSemantic.Keyword, text);
+    private static MarkupScopedSemantic KW(StringView text) => new(MarkupSemantic.Keyword, (string)text);
 
     #region 0XXX - Miscellaneous Tooling/Internal Diagnostics
 
@@ -42,25 +43,31 @@ public static class FrontEndDiagnostics
         context.EmitDiagnostic(DiagnosticSemantic.Extension, "1003", source, location, [], "'#pragma once' is a non-standard C extension.");
 
     public static void ExtElifdef(this CompilerContext context, Token directiveToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1004", directiveToken.Source, directiveToken.Location, [], $"'#elifdef' is a C23 extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1004", directiveToken.Source, directiveToken.Location, [], "'#elifdef' is a C23 extension.");
 
     public static void ExtElifndef(this CompilerContext context, Token directiveToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1005", directiveToken.Source, directiveToken.Location, [], $"'#elifndef' is a C23 extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1005", directiveToken.Source, directiveToken.Location, [], "'#elifndef' is a C23 extension.");
 
     public static void ExtHasFeature(this CompilerContext context, Token exprToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1006", exprToken.Source, exprToken.Location, [], $"'__has_feature' is a Clang extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1006", exprToken.Source, exprToken.Location, [], "'__has_feature' is a Clang extension.");
 
     public static void ExtHasExtension(this CompilerContext context, Token exprToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1007", exprToken.Source, exprToken.Location, [], $"'__has_extension' is a non-standard extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1007", exprToken.Source, exprToken.Location, [], "'__has_extension' is a non-standard extension.");
 
     public static void ExtIncludeNext(this CompilerContext context, Token directiveToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1008", directiveToken.Source, directiveToken.Location, [], $"'#include_next' is a non-standard extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1008", directiveToken.Source, directiveToken.Location, [], "'#include_next' is a non-standard extension.");
 
     public static void ExtHasInclude(this CompilerContext context, Token exprToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1009", exprToken.Source, exprToken.Location, [], $"'__has_include' is a non-standard extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1009", exprToken.Source, exprToken.Location, [], "'__has_include' is a non-standard extension.");
 
     public static void ExtHasIncludeNext(this CompilerContext context, Token exprToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1010", exprToken.Source, exprToken.Location, [], $"'__has_include_next' is a non-standard extension.");
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1010", exprToken.Source, exprToken.Location, [], "'__has_include_next' is a non-standard extension.");
+
+    public static void ExtC11Keyword(this CompilerContext context, Token keywordToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Extension, "1011", keywordToken.Source, keywordToken.Location, [], $"'{KW(keywordToken.Spelling)}' is a C11 extension.");
+
+    public static void WarnC11CompatKeyword(this CompilerContext context, Token keywordToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1012", keywordToken.Source, keywordToken.Location, [], $"'{KW(keywordToken.Spelling)}' is a C11 compatibility keyword.");
 
     #endregion
 

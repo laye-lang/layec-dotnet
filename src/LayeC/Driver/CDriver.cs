@@ -260,13 +260,14 @@ Options:
             var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
 
             Context.Todo("Parse C");
-            //var parser = new LayeParser(Context, languageOptions, inputSource, new BufferTokenStream(sourceTokens));
-            //var moduleUnit = parser.ParseModuleUnit();
+            var sema = new Sema(Context, languageOptions);
+            var parser = new CParser(sema, inputSource, new BufferTokenStream(sourceTokens));
+            var translationUnit = parser.ParseTranslationUnit();
 
             if (Context.Diag.HasEmittedErrors)
                 return 1;
 
-            //debugPrinter.PrintModuleUnit(moduleUnit);
+            debugPrinter.PrintTranslationUnit(translationUnit);
             return 0;
         }
     }
