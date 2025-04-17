@@ -13,7 +13,7 @@ public static class SyntaxFacts
     private static readonly Dictionary<StringView, KeywordStandardInfo> _cKeywordInfos = new()
     {
         { "alignas", new(LanguageFeatures.C23, TokenKind.KWAlignas) },
-        { "_Alignas", new(LanguageFeatures.C11, TokenKind.KWAlignas) },
+        { "_Alignas", new(LanguageFeatures.C11, TokenKind.KW_Alignas) },
         { "alignof", new(LanguageFeatures.C23, TokenKind.KWAlignof) },
         { "_Alignof", new(LanguageFeatures.C11, TokenKind.KWAlignof) },
         { "_Atomic", new(LanguageFeatures.C11, TokenKind.KW_Atomic) },
@@ -61,8 +61,9 @@ public static class SyntaxFacts
         { "_Static_assert", new(LanguageFeatures.C11, TokenKind.KWStatic_Assert) },
         { "struct", new(LanguageFeatures.None, TokenKind.KWStruct) },
         { "switch", new(LanguageFeatures.None, TokenKind.KWSwitch) },
+        { "__thread", new(LanguageFeatures.C23, TokenKind.KW__Thread) },
         { "thread_local", new(LanguageFeatures.C23, TokenKind.KWThread_Local) },
-        { "_Thread_local", new(LanguageFeatures.C11, TokenKind.KWThread_Local) },
+        { "_Thread_local", new(LanguageFeatures.C11, TokenKind.KW_Thread_Local) },
         { "true", new(LanguageFeatures.C23, TokenKind.KWTrue) },
         { "typedef", new(LanguageFeatures.None, TokenKind.KWTypedef) },
         { "typeof", new(LanguageFeatures.C23, TokenKind.KWTypeof) },

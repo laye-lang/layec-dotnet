@@ -93,6 +93,7 @@ public enum TokenKind
 
     KWAlias,
     KWAlignas,
+    KW_Alignas,
     KWAlignof,
     KWAnd,
     KWAs,
@@ -183,7 +184,9 @@ public enum TokenKind
     KWSwitch,
     KWTemplate,
     KWTest,
+    KW__Thread,
     KWThread_Local,
+    KW_Thread_Local,
     KWTrue,
     KWTypedef,
     KWTypeof,

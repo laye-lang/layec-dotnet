@@ -70,6 +70,14 @@ public sealed partial class CParser
         throw new UnreachableException();
     }
 
+    private bool IsStorageClassSpecifier(TokenKind kind) => kind switch
+    {
+        TokenKind.KWTypedef or TokenKind.KWExtern or TokenKind.KWStatic or
+        TokenKind.KWRegister or TokenKind.KWThread_Local or TokenKind.KW__Thread => true,
+        TokenKind.KWAuto when !LanguageOptions.CIsC23 => true,
+        _ => false,
+    };
+
     /// ParseDeclarationSpecifiers
     /// 
     ///       declaration-specifiers: [C99 6.7]
@@ -78,7 +86,6 @@ public sealed partial class CParser
     /// [C99]   function-specifier declaration-specifiers[opt]
     /// [C11]   alignment-specifier declaration-specifiers[opt]
     /// [GNU]   attributes declaration-specifiers[opt]
-    /// [Clang] '__module_private__' declaration-specifiers[opt]
     ///
     ///       storage-class-specifier: [C99 6.7.1]
     ///         'typedef'
@@ -94,7 +101,6 @@ public sealed partial class CParser
     /// [C99]   'inline'
     public void ParseDeclarationSpecifiers(SyntaxCDeclSpecBuilder declSpec, DeclSpecContext declContext)
     {
-        SyntaxCAttributesBuilder attrs = new();
-
+        var attrs = new SyntaxCAttributesBuilder();
     }
 }
