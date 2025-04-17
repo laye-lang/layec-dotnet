@@ -17,7 +17,7 @@ public enum PreprocessorMode
     /// <summary>
     /// A minimal mode, for use when reading module header information from Laye source files.
     /// Alternatively, this is useful to explicitly *not* preprocess a source file due to user input, e.g. when the source is already the result of preprocessing.
-    /// 
+    ///
     /// Disables macro expansions and directive parsing entirely, but maintains the language switching of 'pragma "C"` in Laye.
     /// Again, remember that any embedded C code will not be preprocessed, only lexed and converted to valid tokens without preprocessing.
     /// </summary>
@@ -38,7 +38,7 @@ public sealed class PreprocessorMacroDefinition(Token nameToken, IEnumerable<Tok
     public bool IsExpanding { get; set; } = false;
 }
 
-public sealed class Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
+public sealed class Preprocessor
 {
     public static string StringizeToken(Token token, bool escape)
     {
@@ -58,7 +58,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             case TokenKind.UnexpectedCharacter: builder.Append("<?>"); break;
 
             case TokenKind.EndOfFile: builder.Append("<EOF>"); break;
-            
+
             case TokenKind.CPPIdentifier: builder.Append((string)token.Spelling); break;
             case TokenKind.CPPNumber: builder.Append((string)token.Spelling); break;
             case TokenKind.CPPVAOpt: builder.Append("__VA_OPT__"); break;
@@ -145,14 +145,14 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         };
     }
 
-    public CompilerContext Context { get; } = context;
-    public LanguageOptions LanguageOptions { get; } = languageOptions;
+    public CompilerContext Context { get; }
+    public LanguageOptions LanguageOptions { get; }
     // TODO(local): I don't actually like how the current implementation of "Minimal" works.
     // instead of *disabling* directives, it should instead read all their tokens (according to their same rules) and return them through buffer token streams.
     // (I think).
     // This way, all tokens are preserved in the output in case it's necessary.
     // For now, this is irrelevant.
-    public PreprocessorMode Mode { get; } = mode;
+    public PreprocessorMode Mode { get; }
 
     public SourceLanguage Language
     {
@@ -165,6 +165,68 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
     }
 
     public bool IsAtEnd => _tokenStreams.Count == 0;
+
+    private delegate List<Token> BuiltInMacroFunction(Token sourceToken, Token builtInToken);
+    private readonly Dictionary<StringView, BuiltInMacroFunction> _builtInMacros;
+
+    private readonly List<StringView> _reservedPPNames;
+
+    public Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
+    {
+        Context = context;
+        LanguageOptions = languageOptions;
+        Mode = mode;
+
+        _builtInMacros = new()
+        {
+            { "__FILE__", HandleFileBuiltInMacro },
+            { "__LINE__", HandleLineBuiltInMacro },
+        };
+
+        // NOTE(nic): consider adding `__DATE__` and `__TIME__` (and others like that) later
+        _reservedPPNames = new()
+        {
+            "__FILE__",
+            "__LINE__",
+            "__VA_ARGS__",
+            "__VA_OPT__",
+            "__has_feature",
+            "__has_include",
+            "__has_include_next",
+            "defined",
+        };
+    }
+
+    private List<Token> HandleFileBuiltInMacro(Token sourceToken, Token builtInToken)
+    {
+        List<Token> tokens = [
+            new Token(TokenKind.LiteralString, SourceLanguage.C, builtInToken.Source, builtInToken.Range)
+            {
+                Spelling = sourceToken.Source.Name,
+                StringValue = sourceToken.Source.Name,
+                LeadingTrivia = builtInToken.LeadingTrivia,
+                TrailingTrivia = builtInToken.TrailingTrivia,
+            },
+        ];
+
+        return tokens;
+    }
+
+    private List<Token> HandleLineBuiltInMacro(Token sourceToken, Token builtInToken)
+    {
+        var locInfoShort = sourceToken.Source.SeekLineColumn(sourceToken.Location);
+
+        List<Token> tokens = [
+            new Token(TokenKind.CPPNumber, SourceLanguage.C, builtInToken.Source, builtInToken.Range)
+            {
+                Spelling = locInfoShort.Line.ToString(),
+                LeadingTrivia = builtInToken.LeadingTrivia,
+                TrailingTrivia = builtInToken.TrailingTrivia,
+            },
+        ];
+
+        return tokens;
+    }
 
     public Token[] Preprocess()
     {
@@ -701,12 +763,32 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         else return null;
     }
 
+    private bool IsBuiltInMacroName(StringView macroName)
+    {
+        return _builtInMacros.ContainsKey(macroName);
+    }
+
+    private bool IsMacroDefined(StringView macroName)
+    {
+        if (IsBuiltInMacroName(macroName))
+            return true;
+
+        return _macroDefs.ContainsKey(macroName);
+    }
+
     private bool MaybeExpandMacro(Token ppToken, bool parenMustBeDirectlyAdjacent = true)
     {
         Context.Assert(ppToken.Kind == TokenKind.CPPIdentifier, "Can only attempt to expand C preprocessor identifiers.");
 
         if (ppToken.DisableExpansion)
             return false;
+
+        if (_builtInMacros.TryGetValue(ppToken.StringValue, out var macroFunction))
+        {
+            List<Token> tokens = macroFunction(ppToken, ppToken);
+            PushTokenStream(new BufferTokenStream(tokens));
+            return true;
+        }
 
         var leadingTrivia = ppToken.LeadingTrivia;
         var macroDef = GetExpandableMacroAndArguments(ppToken.StringValue, out var arguments, out var trailingTrivia);
@@ -758,6 +840,22 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             while (expansion.Cursor < macroDef.Tokens.Count)
             {
                 var token = expansion.MacroPPTokenAtCursor;
+
+                if (token.Kind == TokenKind.CPPFile)
+                {
+                    List<Token> tokens = HandleFileBuiltInMacro(expansion.SourceToken, token);
+                    expansion.Append(this, tokens[0]);
+                    expansion.Cursor++;
+                    continue;
+                }
+
+                if (token.Kind == TokenKind.CPPLine)
+                {
+                    List<Token> tokens = HandleLineBuiltInMacro(expansion.SourceToken, token);
+                    expansion.Append(this, tokens[0]);
+                    expansion.Cursor++;
+                    continue;
+                }
 
                 // Skip '__VA_OPT__(' and mark that we're inside of __VA_OPT__.
                 if (token.Kind == TokenKind.CPPVAOpt)
@@ -911,6 +1009,21 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                 for (; expansion.Cursor < macroDef.Tokens.Count; expansion.Cursor++)
                 {
                     var token = expansion.MacroPPTokenAtCursor;
+
+                    if (token.Kind == TokenKind.CPPFile)
+                    {
+                        List<Token> tokens = HandleFileBuiltInMacro(expansion.SourceToken, token);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
+                    if (token.Kind == TokenKind.CPPLine)
+                    {
+                        List<Token> tokens = HandleLineBuiltInMacro(expansion.SourceToken, token);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
                     // Only attempt to paste if there's actually a valid token.
                     // We error on invalid '##' placement, but allow the preprocessor to continue.
                     if (token.Kind == TokenKind.HashHash && expansion.Cursor + 1 < expansion.MacroDefinition.Tokens.Count)
@@ -921,7 +1034,27 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     else expansion.Append(this, token);
                 }
             }
-            else expansion.Expansion.AddRange(macroDef.Tokens.Select(t => t.Clone()));
+            else
+            {
+                foreach (var token in macroDef.Tokens)
+                {
+                    if (token.Kind == TokenKind.CPPFile)
+                    {
+                        List<Token> tokens = HandleFileBuiltInMacro(expansion.SourceToken, token);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
+                    if (token.Kind == TokenKind.CPPLine)
+                    {
+                        List<Token> tokens = HandleLineBuiltInMacro(expansion.SourceToken, token);
+                        expansion.Append(this, tokens[0]);
+                        continue;
+                    }
+
+                    expansion.Append(this, token);
+                }
+            }
 
             PrepareExpansion(expansion, leadingTrivia, trailingTrivia);
         }
@@ -1172,7 +1305,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         if (directiveName == "define")
             HandleDefineDirective();
         else if (directiveName == "undef")
-            HandleUndefDirective();
+            HandleUndefDirective(directiveToken);
         else if (directiveName == "include")
             HandleIncludeDirective(language, preprocessorToken, directiveToken, false);
         else if (directiveName == "include_next")
@@ -1284,6 +1417,10 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                     if (!LanguageOptions.CIsC23)
                         Context.ExtVAOpt(token.Source, token.Location);
                 }
+                else if (token.StringValue == "__FILE__")
+                    token.Kind = TokenKind.CPPFile;
+                else if (token.StringValue == "__LINE__")
+                    token.Kind = TokenKind.CPPLine;
                 else if (macroData.ParameterNames.Contains(token.StringValue))
                     token.Kind = TokenKind.CPPMacroParam;
             }
@@ -1309,6 +1446,12 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             }
         }
 
+        if (_reservedPPNames.Contains(macroData.Name))
+        {
+            Context.ErrorCannotDefineReservedName(macroNameToken.Source, macroNameToken.Location);
+            return;
+        }
+
         _macroDefs[macroData.Name] = new PreprocessorMacroDefinition(macroData.NameToken, macroData.Tokens, macroData.ParameterNames)
         {
             IsFunctionLike = macroData.IsFunctionLike,
@@ -1317,7 +1460,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
         };
     }
 
-    private void HandleUndefDirective()
+    private void HandleUndefDirective(Token directiveToken)
     {
         var macroNameToken = ReadTokenRaw();
         if (macroNameToken.Kind != TokenKind.CPPIdentifier)
@@ -1327,8 +1470,16 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             return;
         }
 
+        if (SkipRemainingDirectiveTokens(null))
+            Context.WarningExtraTokensAtEndOfDirective(directiveToken);
+
+        if (_reservedPPNames.Contains(macroNameToken.StringValue))
+        {
+            Context.ErrorCannotUndefineReservedName(macroNameToken.Source, macroNameToken.Location);
+            return;
+        }
+
         _macroDefs.Remove(macroNameToken.StringValue);
-        SkipRemainingDirectiveTokens(null);
     }
 
     private readonly HashSet<SourceText> _includeGuard = [];
@@ -1473,7 +1624,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             Context.ErrorExpectedMacroName(macroName.Source, macroName.Location);
             isDefined = false;
         }
-        else isDefined = _macroDefs.ContainsKey(macroName.StringValue);
+        else isDefined = IsMacroDefined(macroName.StringValue);
 
         bool isBranchChosen = isDefined == isIfdef;
 
@@ -1538,7 +1689,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
             Context.ErrorExpectedMacroName(macroName.Source, macroName.Location);
             isDefined = false;
         }
-        else isDefined = _macroDefs.ContainsKey(macroName.StringValue);
+        else isDefined = IsMacroDefined(macroName.StringValue);
 
         if (lexer.PreprocessorIfDepth == 0)
         {
@@ -1689,7 +1840,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
 
         var openParenToken = token;
         tokenIndex++;
-        
+
         token = SafeGetToken(tokenIndex);
         if (token.Kind == TokenKind.HashHash)
             Context.ErrorConcatenationTokenCannotStartVAOpt(token);
@@ -1852,7 +2003,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                             return 0;
                         }
 
-                        return B(_pp._macroDefs.ContainsKey(macroToken.StringValue));
+                        return B(_pp.IsMacroDefined(macroToken.StringValue));
                     }
 
                     var macroNameToken = Consume();
@@ -1862,7 +2013,7 @@ public sealed class Preprocessor(CompilerContext context, LanguageOptions langua
                         return 0;
                     }
 
-                    return B(_pp._macroDefs.ContainsKey(macroNameToken.StringValue));
+                    return B(_pp.IsMacroDefined(macroNameToken.StringValue));
                 }
 
                 case TokenKind.CPPIdentifier when token.StringValue == "__has_feature" && At(TokenKind.OpenParen):

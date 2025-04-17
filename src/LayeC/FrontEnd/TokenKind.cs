@@ -13,6 +13,8 @@ public enum TokenKind
     CPPNumber,
     CPPVAOpt,
     CPPVAArgs,
+    CPPFile,
+    CPPLine,
     CPPMacroParam,
     CPPHeaderName,
     CPPDirectiveEnd,
