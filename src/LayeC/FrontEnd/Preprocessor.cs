@@ -2106,22 +2106,22 @@ public sealed class Preprocessor
 
                 switch (operatorToken.Kind)
                 {
-                    case TokenKind.Star: lhs = lhs * rhs; break;
-                    case TokenKind.Slash: lhs = lhs / rhs; break;
-                    case TokenKind.Percent: lhs = lhs % rhs; break;
-                    case TokenKind.Plus: lhs = lhs + rhs; break;
-                    case TokenKind.Minus: lhs = lhs - rhs; break;
-                    case TokenKind.LessLess: lhs = lhs << rhs; break;
-                    case TokenKind.GreaterGreater: lhs = lhs >> rhs; break;
+                    case TokenKind.Star: lhs *= rhs; break;
+                    case TokenKind.Slash: lhs /= rhs; break;
+                    case TokenKind.Percent: lhs %= rhs; break;
+                    case TokenKind.Plus: lhs += rhs; break;
+                    case TokenKind.Minus: lhs -= rhs; break;
+                    case TokenKind.LessLess: lhs <<= rhs; break;
+                    case TokenKind.GreaterGreater: lhs >>= rhs; break;
                     case TokenKind.Less: lhs = B(lhs < rhs); break;
                     case TokenKind.LessEqual: lhs = B(lhs <= rhs); break;
                     case TokenKind.Greater: lhs = B(lhs > rhs); break;
                     case TokenKind.GreaterEqual: lhs = B(lhs >= rhs); break;
                     case TokenKind.EqualEqual: lhs = B(lhs == rhs); break;
                     case TokenKind.BangEqual: lhs = B(lhs != rhs); break;
-                    case TokenKind.Ampersand: lhs = lhs & rhs; break;
-                    case TokenKind.Caret: lhs = lhs ^ rhs; break;
-                    case TokenKind.Pipe: lhs = lhs | rhs; break;
+                    case TokenKind.Ampersand: lhs &= rhs; break;
+                    case TokenKind.Caret: lhs ^= rhs; break;
+                    case TokenKind.Pipe: lhs |= rhs; break;
                     case TokenKind.AmpersandAmpersand: lhs = B(lhs != 0 && rhs != 0); break;
                     case TokenKind.PipePipe: lhs = B(lhs != 0 || rhs != 0); break;
 
