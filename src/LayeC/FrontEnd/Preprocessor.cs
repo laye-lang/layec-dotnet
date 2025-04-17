@@ -168,7 +168,7 @@ public sealed class Preprocessor
 
     private delegate List<Token> BuiltInMacroFunction(Token sourceToken, Token builtInToken);
     private readonly Dictionary<StringView, BuiltInMacroFunction> _builtInMacros;
-
+    private readonly List<StringView> _builtInPPExpressionMacros;
     private readonly List<StringView> _reservedPPNames;
 
     public Preprocessor(CompilerContext context, LanguageOptions languageOptions, PreprocessorMode mode = PreprocessorMode.Full)
@@ -182,6 +182,8 @@ public sealed class Preprocessor
             { "__FILE__", HandleFileBuiltInMacro },
             { "__LINE__", HandleLineBuiltInMacro },
         };
+
+        _builtInPPExpressionMacros = ["__has_feature", "__has_include", "__has_include_next"];
 
         // NOTE(nic): consider adding `__DATE__` and `__TIME__` (and others like that) later
         _reservedPPNames = new()
@@ -261,12 +263,6 @@ public sealed class Preprocessor
     {
         var ppToken = ReadAndExpandToken();
         return ConvertPPToken(ppToken);
-    }
-
-    public void Define(StringView macroName)
-    {
-        var nameToken = new Token(TokenKind.CPPIdentifier, SourceLanguage.C, SourceText.Unknown, SourceRange.Zero);
-        _macroDefs[macroName] = new PreprocessorMacroDefinition(nameToken, [], []);
     }
 
     #region Implementation
@@ -768,7 +764,7 @@ public sealed class Preprocessor
 
     private bool IsBuiltInMacroName(StringView macroName)
     {
-        return _builtInMacros.ContainsKey(macroName);
+        return _builtInMacros.ContainsKey(macroName) || _builtInPPExpressionMacros.Contains(macroName);
     }
 
     private bool IsMacroDefined(StringView macroName)
