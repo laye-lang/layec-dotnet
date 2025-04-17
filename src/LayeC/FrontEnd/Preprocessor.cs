@@ -183,7 +183,7 @@ public sealed class Preprocessor
             { "__LINE__", HandleLineBuiltInMacro },
         };
 
-        _builtInPPExpressionMacros = ["__has_feature", "__has_include", "__has_include_next"];
+        _builtInPPExpressionMacros = ["__has_feature", "__has_include", "__has_include_next", "__has_cpp_attribute"];
 
         // NOTE(nic): consider adding `__DATE__` and `__TIME__` (and others like that) later
         _reservedPPNames = new()
@@ -195,6 +195,7 @@ public sealed class Preprocessor
             "__has_feature",
             "__has_include",
             "__has_include_next",
+            "__has_cpp_attribute",
             "defined",
         };
     }
