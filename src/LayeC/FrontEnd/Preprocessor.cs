@@ -196,6 +196,7 @@ public sealed class Preprocessor
             "__has_include",
             "__has_include_next",
             "__has_cpp_attribute",
+            "_Pragma",
             "defined",
         };
     }
@@ -504,6 +505,41 @@ public sealed class Preprocessor
             var lexer = ((LexerTokenStream)_tokenStreams.Peek()).Lexer;
             var directiveToken = ReadTokenRaw();
             return HandlePragmaC(true, lexer, ppToken, directiveToken);
+        }
+
+        if (ppToken.Kind == TokenKind.CPPIdentifier && ppToken.StringValue == "_Pragma")
+        {
+            Token openParenToken = ReadTokenRaw();
+            if (openParenToken.Kind != TokenKind.OpenParen)
+            {
+                Context.ErrorExpectedToken(openParenToken.Source, openParenToken.Location, "'('");
+                return Preprocess(openParenToken);
+            }
+
+            Token pragmaStringToken = ReadTokenRaw();
+            if (pragmaStringToken.Kind != TokenKind.LiteralString)
+            {
+                Context.ErrorExpectedToken(pragmaStringToken.Source, pragmaStringToken.Location, "a string literal");
+                return Preprocess(pragmaStringToken);
+            }
+
+            Token closeParenToken = ReadTokenRaw();
+            if (closeParenToken.Kind != TokenKind.CloseParen)
+            {
+                Context.ErrorExpectedToken(closeParenToken.Source, closeParenToken.Location, "')'");
+                return Preprocess(closeParenToken);
+            }
+
+            SourceText source = new("<pragma>", pragmaStringToken.StringValue.ToString() + "\n", SourceLanguage.C);
+            Lexer lexer = new(Context, source, LanguageOptions);
+            using (lexer.PushMode(LexerState.CPPWithinDirective))
+            {
+                LexerTokenStream tokenStream = new(lexer);
+                PushTokenStream(tokenStream);
+                HandlePragmaDirective(SourceLanguage.C, ppToken, ppToken);
+            }
+
+            return null;
         }
 
         if (ppToken.Kind == TokenKind.CPPIdentifier && Mode == PreprocessorMode.Full && MaybeExpandMacro(ppToken))
