@@ -18,6 +18,7 @@ public static class SyntaxFacts
         { "_Alignof", new(LanguageFeatures.C11, TokenKind.KWAlignof) },
         { "_Atomic", new(LanguageFeatures.C11, TokenKind.KW_Atomic) },
         { "__attribute__", new(LanguageFeatures.GNUMode, TokenKind.KW__Attribute__) },
+        { "__auto_type", new(LanguageFeatures.None, TokenKind.KW__Auto_Type) },
         { "auto", new(LanguageFeatures.None, TokenKind.KWAuto) },
         { "_BitInt", new(LanguageFeatures.C23, TokenKind.KW_BitInt) },
         { "bool", new(LanguageFeatures.C23, TokenKind.KWBool) },

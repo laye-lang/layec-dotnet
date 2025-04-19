@@ -4,12 +4,12 @@ namespace LayeC.FrontEnd;
 
 public sealed partial class CParser
 {
-    public bool MaybeParseC23Attributes(SyntaxCAttributesBuilder attrs)
+    public bool MaybeParseC23Attributes(List<SyntaxCAttribute> attrs)
     {
         return false;
     }
 
-    public bool MaybeParseGNUAttributes(SyntaxCAttributesBuilder attrs)
+    public bool MaybeParseGNUAttributes(List<SyntaxCAttribute> attrs)
     {
         return false;
     }

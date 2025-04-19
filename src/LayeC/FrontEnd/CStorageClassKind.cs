@@ -1,7 +1,7 @@
 ﻿namespace LayeC.FrontEnd;
 
 [Flags]
-public enum CStorageClass
+public enum CStorageClassKind
 {
     None = 0,
 

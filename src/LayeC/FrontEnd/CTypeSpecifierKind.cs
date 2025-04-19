@@ -1,4 +1,4 @@
-﻿namespace LayeC.FrontEnd.Syntax;
+﻿namespace LayeC.FrontEnd;
 
 public enum CTypeSpecifierKind
     : long
@@ -10,7 +10,7 @@ public enum CTypeSpecifierKind
     Short = 1L << 2,
     Int = 1L << 3,
     Long = 1L << 4,
-    LongLong = 1L << 5,
+    Long2 = 1L << 5,
     Signed = 1L << 6,
     Unsigned = 1L << 7,
     Float = 1L << 8,
@@ -35,8 +35,11 @@ public enum CTypeSpecifierKind
     TypeofUnqualExpr = 1L << 27,
     Auto = 1L << 28,
     Atomic = 1L << 29,
+    Complex = 1L << 30,
 
     // might need more in the future and we were close to the edge so I made this a long instead of an int
+
+    LongLong = Long | Long2,
 
     Error = 1L << 63,
 }

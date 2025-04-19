@@ -1,6 +1,6 @@
 ﻿namespace LayeC.FrontEnd;
 
-public enum CStorageDuration
+public enum CStorageDurationKind
 {
     Static,
     Thread,

@@ -100,6 +100,7 @@ public enum TokenKind
     KWAssert,
     KW_Atomic,
     KW__Attribute__,
+    KW__Auto_Type,
     KWAuto,
     KW_BitInt,
     KWBool,

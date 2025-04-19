@@ -3,6 +3,7 @@
 using LayeC.FrontEnd.Semantics.Decls;
 using LayeC.FrontEnd.Syntax.Decls;
 using LayeC.FrontEnd.Syntax.Meta;
+using LayeC.FrontEnd.Syntax.Types;
 
 namespace LayeC.FrontEnd;
 
@@ -35,7 +36,7 @@ public sealed partial class CParser
     /// [GNU]   __extension__ external-declaration
     /// [GNU]   asm-definition:
     ///           simple-asm-expr ';'
-    public SemaDeclGroup ParseExternalDeclaration(SyntaxCAttributesBuilder declAttrs, SyntaxCAttributesBuilder declSpecAttrs)
+    public SemaDeclGroup ParseExternalDeclaration(List<SyntaxCAttribute> declAttrs, List<SyntaxCAttribute> declSpecAttrs)
     {
         SemaDecl? singleDecl = null;
         switch (CurrentToken.Kind)
@@ -59,48 +60,108 @@ public sealed partial class CParser
         return new SemaDeclGroup(singleDecl);
     }
 
-    public SemaDeclGroup ParseDeclarationOrFunctionDefinition(SyntaxCAttributesBuilder declAttrs, SyntaxCAttributesBuilder declSpecAttrs)
+    public SemaDeclGroup ParseDeclarationOrFunctionDefinition(List<SyntaxCAttribute> declAttrs, List<SyntaxCAttribute> declSpecAttrs)
     {
-        var declSpec = new SyntaxCDeclSpecBuilder();
-
-        declSpec.TakeAttributesFrom(declSpecAttrs);
-        ParseDeclarationSpecifiers(declSpec, DeclSpecContext.TopLevel);
+        var declSpec = ParseDeclarationSpecifiers(declSpecAttrs, DeclSpecContext.TopLevel);
 
         Context.Todo(nameof(ParseDeclarationOrFunctionDefinition));
         throw new UnreachableException();
     }
 
-    private bool IsStorageClassSpecifier(TokenKind kind) => kind switch
-    {
-        TokenKind.KWTypedef or TokenKind.KWExtern or TokenKind.KWStatic or
-        TokenKind.KWRegister or TokenKind.KWThread_Local or TokenKind.KW__Thread => true,
-        TokenKind.KWAuto when !LanguageOptions.CIsC23 => true,
-        _ => false,
-    };
-
     /// ParseDeclarationSpecifiers
     /// 
-    ///       declaration-specifiers: [C99 6.7]
-    ///         storage-class-specifier declaration-specifiers[opt]
-    ///         type-specifier declaration-specifiers[opt]
-    /// [C99]   function-specifier declaration-specifiers[opt]
-    /// [C11]   alignment-specifier declaration-specifiers[opt]
-    /// [GNU]   attributes declaration-specifiers[opt]
+    ///         declaration-specifiers: [C99 6.7]
+    ///           storage-class-specifier declaration-specifiers[opt]
+    ///           type-specifier declaration-specifiers[opt]
+    /// [C99]     function-specifier declaration-specifiers[opt]
+    /// [C11]     alignment-specifier declaration-specifiers[opt]
+    /// [GNU]     attributes declaration-specifiers[opt]
     ///
-    ///       storage-class-specifier: [C99 6.7.1]
-    ///         'typedef'
-    ///         'extern'
-    ///         'static'
-    ///         'auto'
-    ///         'register'
-    /// [C11]   '_Thread_local'
-    /// [C23]   'thread_local'
-    /// [GNU]   '__thread'
+    ///         storage-class-specifier: [C99 6.7.1]
+    ///           'typedef'
+    ///           'extern'
+    ///           'static'
+    ///           'auto'
+    ///           'register'
+    /// [C11]     '_Thread_local'
+    /// [C23]     'thread_local'
+    /// [GNU]     '__thread'
     /// 
-    ///       function-specifier: [C99 6.7.4]
-    /// [C99]   'inline'
-    public void ParseDeclarationSpecifiers(SyntaxCDeclSpecBuilder declSpec, DeclSpecContext declContext)
+    ///         type-specifier:
+    ///           'void'
+    ///           'char'
+    ///           'short'
+    ///           'int'
+    ///           'long'
+    ///           'float'
+    ///           'double'
+    ///           'signed'
+    ///           'unsigned'
+    ///           '_BitInt' '(' constant-expression ')'
+    ///           'bool'
+    ///           '_Complex'
+    ///           '_Decimal32'
+    ///           '_Decimal64'
+    ///           '_Decimal128'
+    /// [C23]     'auto'
+    /// [GNU]     '__auto_type'
+    ///           atomic-type-specifier
+    ///           struct-or-union-specifier
+    ///           enum-specifier
+    ///           typedef-name
+    /// [C23]     typeof-specifier
+    ///
+    ///         atomic-type-specifier
+    ///           '_Atomic' '(' type-name ')'
+    /// 
+    ///         typeof-specifier:
+    ///           'typeof' '(' typeof-specifier-argument ')'
+    ///           'typeof_unqual' '(' typeof-specifier-argument ')'
+    ///         
+    ///         typeof-specifier-argument:
+    ///           expression
+    ///           type-name
+    /// 
+    ///         function-specifier: [C99 6.7.4]
+    /// [C99]     'inline'
+    /// 
+    ///         type-qualifier:
+    ///           const
+    ///           restrict
+    ///           volatile
+    ///           _Atomic
+    public SyntaxCDeclarationSpecifiers ParseDeclarationSpecifiers(List<SyntaxCAttribute> declSpecAttrs, DeclSpecContext declContext)
     {
-        var attrs = new SyntaxCAttributesBuilder();
+        //var attrs = new SyntaxCAttributesBuilder();
+
+        Context.Todo(nameof(ParseDeclarationSpecifiers));
+        throw new UnreachableException();
+    }
+
+    public SyntaxCTypeSpecifier ParseTypeSpecifier()
+    {
+        var typeSpecTokens = new List<Token>();
+        var typeSpec = CTypeSpecifierKind.Unspecified;
+
+        bool continueChecking = true;
+        while (continueChecking)
+        {
+            var ct = CurrentToken;
+            switch (ct.Kind)
+            {
+                default: continueChecking = false; continue;
+
+                case TokenKind.KWInt:
+                {
+                    typeSpecTokens.Add(Consume());
+                    if (typeSpec.HasFlag(CTypeSpecifierKind.Int))
+                        Context.ErrorDuplicateTypeSpecifier(ct);
+                    typeSpec |= CTypeSpecifierKind.Int;
+                } break;
+            }
+        }
+
+        Context.Todo(nameof(ParseTypeSpecifier));
+        throw new UnreachableException();
     }
 }

@@ -1,5 +1,5 @@
 ﻿namespace LayeC.FrontEnd.Syntax.Meta;
 
-public sealed class SyntaxCAttributesBuilder
+public abstract class SyntaxCAttribute
 {
 }

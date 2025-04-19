@@ -1,7 +1,7 @@
 ﻿namespace LayeC.FrontEnd;
 
 [Flags]
-public enum CTypeQualifier
+public enum CTypeQualifierKind
 {
     None = 0,
 

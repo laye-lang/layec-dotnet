@@ -219,6 +219,9 @@ public static class FrontEndDiagnostics
     public static void ErrorExpectedType(this CompilerContext context, SourceText source, SourceLocation location) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "4005", source, location, [], "Expected a type.");
 
+    public static void ErrorDuplicateTypeSpecifier(this CompilerContext context, Token typeSpecToken) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4006", typeSpecToken.Source, typeSpecToken.Location, [], "Duplicate type specifier.");
+
     #endregion
 
     #region 5XXX - Semantic Diagnostics

@@ -10,8 +10,8 @@ public sealed partial class CParser
     /// </summary>
     public bool ParseTopLevel(out SemaDeclGroup declGroup)
     {
-        SyntaxCAttributesBuilder declAttrs = new();
-        SyntaxCAttributesBuilder declSpecAttrs = new();
+        List<SyntaxCAttribute> declAttrs = [];
+        List<SyntaxCAttribute> declSpecAttrs = [];
 
         while (MaybeParseC23Attributes(declAttrs) || MaybeParseGNUAttributes(declSpecAttrs))
         {
