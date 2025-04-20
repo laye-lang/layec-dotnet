@@ -41,7 +41,6 @@ public sealed partial class CParser
         SemaDecl? singleDecl = null;
         switch (CurrentToken.Kind)
         {
-            // TODO(local): source-level pragmas
             // TODO(local): empty declaration? I think C++ only
             // TODO(local): unexpected }
             // TODO(local): unexpected EOF

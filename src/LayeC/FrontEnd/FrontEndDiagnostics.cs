@@ -66,8 +66,11 @@ public static class FrontEndDiagnostics
     public static void ExtC11Keyword(this CompilerContext context, Token keywordToken) =>
         context.EmitDiagnostic(DiagnosticSemantic.Extension, "1011", keywordToken.Source, keywordToken.Location, [], $"'{KW(keywordToken.Spelling)}' is a C11 extension.");
 
+    public static void ExtMicrosoftPragma(this CompilerContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1012", source, location, [], "'__pragma' is an Microsoft extension.");
+
     public static void WarnC11CompatKeyword(this CompilerContext context, Token keywordToken) =>
-        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1012", keywordToken.Source, keywordToken.Location, [], $"'{KW(keywordToken.Spelling)}' is a C11 compatibility keyword.");
+        context.EmitDiagnostic(DiagnosticSemantic.Warning, "1013", keywordToken.Source, keywordToken.Location, [], $"'{KW(keywordToken.Spelling)}' is a C11 compatibility keyword.");
 
     #endregion
 
