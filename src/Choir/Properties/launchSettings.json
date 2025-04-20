@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "LayeC": {
+      "commandName": "Project",
+      "commandLineArgs": "-cc1 -fsyntax-only scratch/foo.c",
+      "workingDirectory": "C:\\Users\\Nashiora\\laye-dev\\layec-dotnet"
+    }
+  }
+}
