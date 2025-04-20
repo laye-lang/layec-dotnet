@@ -11,7 +11,7 @@ namespace Choir.Driver;
 public sealed class CDriver
     : CompilerDriverWithContext
 {
-    public static int RunWithArgs(DiagnosticConsumerProvider diagProvider, string[] args, string programName = "dncc")
+    public static int RunWithArgs(DiagnosticConsumerProvider diagProvider, string[] args, string programName = "dnccly")
     {
         using var driver = CreateDriver();
         return driver?.Execute() ?? 1;
@@ -30,7 +30,7 @@ public sealed class CDriver
         }
     }
 
-    public static CDriver Create(DiagnosticConsumerProvider diagProvider, CDriverOptions options, string programName = "dncc")
+    public static CDriver Create(DiagnosticConsumerProvider diagProvider, CDriverOptions options, string programName = "dnccly")
     {
         var context = new CompilerContext(diagProvider(options.OutputColoring), Target.X86_64, options.Triple)
         {

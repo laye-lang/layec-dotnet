@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net9.0</TargetFramework>
+		<LangVersion>12.0</LangVersion>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<PublishAot>true</PublishAot>
+		<IsAotCompatible>true</IsAotCompatible>
+		<RootNamespace>Canal</RootNamespace>
+	</PropertyGroup>
+
+	<!-- Use this proerty group to get a smaller executable -->
+	<PropertyGroup Condition="$(Configuration)=='Release'">
+		<DebugType>none</DebugType>
+		<GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+		<EventSourceSupport>false</EventSourceSupport>
+		<IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+		<IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+		<IlcOptimizationPreference>Size</IlcOptimizationPreference>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<SelfContained>true</SelfContained>
+	</PropertyGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\Choir\Choir.csproj" />
+	</ItemGroup>
+
+</Project>

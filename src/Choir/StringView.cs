@@ -80,6 +80,17 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
     }
 
     public int IndexOf(char c) => Span.IndexOf(c);
+    public int IndexOf(string s) => IndexOf((StringView)s);
+    public int IndexOf(StringView sv)
+    {
+        for (int i = 0; i < Length - sv.Length; i++)
+        {
+            if (this[i..].StartsWith(sv))
+                return i;
+        }
+
+        return -1;
+    }
 
     public bool StartsWith(char c) => Length > 0 && Span[0] == c;
     public bool StartsWith(string s) => StartsWith(s.AsSpan());
@@ -150,5 +161,49 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
         }
 
         return Empty;
+    }
+
+    public StringView TakeWhile(params char[] characters) => TakeWhile(c => Array.IndexOf(characters, c) >= 0);
+    public StringView TakeWhile(Predicate<char> predicate)
+    {
+        int length = 0;
+        while (length < Length && predicate(Span[length]))
+            length++;
+        return this[..length];
+    }
+
+    public StringView TakeUntil(params char[] characters) => TakeUntil(c => Array.IndexOf(characters, c) >= 0);
+    public StringView TakeUntil(Predicate<char> predicate)
+    {
+        int length = 0;
+        while (length < Length && !predicate(Span[length]))
+            length++;
+        return this[..length];
+    }
+
+    public StringView DropWhile(params char[] characters) => DropWhile(c => Array.IndexOf(characters, c) >= 0);
+    public StringView DropWhile(Predicate<char> predicate)
+    {
+        int length = 0;
+        while (length < Length && predicate(Span[length]))
+            length++;
+        return this[length..];
+    }
+
+    public StringView DropUntil(params char[] characters) => DropUntil(c => Array.IndexOf(characters, c) >= 0);
+    public StringView DropUntil(Predicate<char> predicate)
+    {
+        int length = 0;
+        while (length < Length && !predicate(Span[length]))
+            length++;
+        return this[length..];
+    }
+
+    public StringView DropUntil(StringView substr)
+    {
+        int length = 0;
+        while (length < Length && !this[length..].StartsWith(substr))
+            length++;
+        return this[length..];
     }
 }
