@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 
 using Choir;
 using Choir.Diagnostics;
@@ -11,48 +12,62 @@ public static class Program
 {
     public static int Main(string[] args)
     {
-        if (args.Any(arg => arg == "--help"))
+        var previousInputEncoding = Console.InputEncoding;
+        var previousOutputEncoding = Console.OutputEncoding;
+
+        try
         {
-            ShowHelp();
-            return 0;
-        }
+            Console.InputEncoding = Encoding.UTF8;
+            Console.OutputEncoding = Encoding.UTF8;
 
-        using var diag = new DiagnosticEngine(new FormattedDiagnosticWriter(Console.Out, true));
-        var options = CanalOptions.Parse(diag, new(args));
-
-        if (diag.HasEmittedErrors)
-            return 1;
-
-        Debug.Assert(options.CheckFile is not null);
-        Debug.Assert(options.CheckFile.Exists);
-
-        var checkSource = new SourceText(options.CheckFile.FullName, options.CheckFile.ReadAllText(), Choir.SourceLanguage.None);
-        var context = new CanalContext(diag, options, checkSource);
-
-        if (options.Prefix.IsNullOrWhiteSpace())
-        {
-            var prefix = ((StringView)checkSource.Text)
-                .DropUntil(CanalContext.PrefixDirectiveName)
-                .DropUntil(char.IsWhiteSpace)
-                .TrimStart()
-                .TakeUntil('\n')
-                .TrimEnd();
-
-            if (prefix.Length == 0)
+            if (args.Any(arg => arg == "--help"))
             {
-                diag.Emit(DiagnosticLevel.Error, $"No prefix provided and not '{CanalContext.PrefixDirectiveName}' directive found in the check file.");
-                return 1;
+                ShowHelp();
+                return 0;
             }
 
-            options.Prefix = (string)prefix;
+            using var diag = new DiagnosticEngine(new FormattedDiagnosticWriter(Console.Out, true));
+            var options = CanalOptions.Parse(diag, new(args));
+
+            if (diag.HasEmittedErrors)
+                return 1;
+
+            Debug.Assert(options.CheckFile is not null);
+            Debug.Assert(options.CheckFile.Exists);
+
+            var checkSource = new SourceText(options.CheckFile.FullName, options.CheckFile.ReadAllText(), Choir.SourceLanguage.None);
+            var context = new CanalContext(diag, options, checkSource);
+
+            if (options.Prefix.IsNullOrWhiteSpace())
+            {
+                var prefix = ((StringView)checkSource.Text)
+                    .DropUntil(CanalContext.PrefixDirectiveName)
+                    .DropUntil(char.IsWhiteSpace)
+                    .TrimStart()
+                    .TakeUntil('\n')
+                    .TrimEnd();
+
+                if (prefix.Length == 0)
+                {
+                    diag.Emit(DiagnosticLevel.Error, $"No prefix provided and not '{CanalContext.PrefixDirectiveName}' directive found in the check file.");
+                    return 1;
+                }
+
+                options.Prefix = (string)prefix;
+            }
+
+            Debug.Assert(!options.Prefix.IsNullOrWhiteSpace());
+            var prefixState = context.CreatePrefix(options.Prefix);
+            context.CollectDirectives(prefixState);
+            context.Process();
+
+            return diag.HasEmittedErrors ? 1 : 0;
         }
-
-        Debug.Assert(!options.Prefix.IsNullOrWhiteSpace());
-        var prefixState = context.CreatePrefix(options.Prefix);
-        context.CollectDirectives(prefixState);
-        context.Process();
-
-        return diag.HasEmittedErrors ? 1 : 0;
+        finally
+        {
+            Console.InputEncoding = previousInputEncoding;
+            Console.OutputEncoding = previousOutputEncoding;
+        }
     }
 
     public static void ShowHelp()

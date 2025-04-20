@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "dncanal": {
+      "commandName": "Project",
+      "commandLineArgs": "scratch\\cat.txt --prefix ##",
+      "workingDirectory": "C:\\Users\\Nashiora\\laye-dev\\layec-dotnet"
+    }
+  }
+}

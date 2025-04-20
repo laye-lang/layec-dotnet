@@ -1,4 +1,7 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
 
 using Choir;
 using Choir.Diagnostics;
@@ -159,6 +162,131 @@ public sealed class CanalContext(DiagnosticEngine diag, CanalOptions options, So
 
                 continue;
             }
+
+            // TODO(local): this will break if the prefix contains the directive name, but it's close enough for now.
+            SourceLocation location = lineInfo.LineStart + lineInfo.LineText.IndexOf(directiveName);
+            switch (directive)
+            {
+                case CanalDirective.Run:
+                case CanalDirective.Verify:
+                case CanalDirective.ExpectFail:
+                case CanalDirective.Prefix:
+                {
+                    Diag.Emit(DiagnosticLevel.Fatal, $"Should have already handled directive {directive}.");
+                    throw new UnreachableException();
+                }
+
+                case CanalDirective.CheckAny:
+                case CanalDirective.CheckNext:
+                case CanalDirective.CheckNotSame:
+                case CanalDirective.CheckNotAny:
+                case CanalDirective.CheckNotNext:
+                {
+                    if (state.ForceRegex)
+                    {
+                        directive += (int)CanalDirective.RegexCheckAny;
+                        goto case CanalDirective.RegexCheckAny;
+                    }
+
+                    state.Checks.Add(new CanalCheck()
+                    {
+                        Directive = directive,
+                        Location = location,
+                        StringData = value.ToString().FoldWhiteSpace(),
+                    });
+                } break;
+
+                case CanalDirective.RegexCheckAny:
+                case CanalDirective.RegexCheckNext:
+                case CanalDirective.RegexCheckNotSame:
+                case CanalDirective.RegexCheckNotAny:
+                case CanalDirective.RegexCheckNotNext:
+                {
+                    try
+                    {
+                        string expr = SubstituteNoCapture(value.ToString().FoldWhiteSpace());
+                        // TODO(local): construct an environment regex if captures are used
+
+                        state.Checks.Add(new CanalCheck()
+                        {
+                            Directive = directive,
+                            Location = location,
+                            RegexData = new Regex(expr),
+                        });
+                    }
+                    catch (RegexParseException regexException)
+                    {
+                        Diag.Emit(DiagnosticLevel.Error, CheckSource, location, $"Invalid regular expression: {regexException.Message}");
+                    }
+                } break;
+            }
+        }
+
+        string SubstituteNoCapture(string expr)
+        {
+            if (state.NoCapture)
+            {
+                int i = 0;
+                Escape(true);
+
+                void Escape(bool topLevel = false)
+                {
+                    while (i < expr.Length)
+                    {
+                        i = expr.IndexOfAny(['(', ')']);
+                        if (i < 0) return;
+
+                        // At a closing paren, let ur caller handle this
+                        // if we’re not at the top level; if we are, just
+                        // escape it.
+                        if (expr[i] == ')')
+                        {
+                            if (!topLevel) return; ;
+                            expr = expr[..i] + "\\" + expr[i..];
+                            i += 2;
+                            continue;
+                        }
+
+                        // Escape any opening parens at the end.
+                        if (i == expr.Length - 1)
+                        {
+                            expr = expr[..i] + "\\" + expr[i..];
+                            i += 2;
+                            return;
+                        }
+
+                        // If the next character is a '?', recurse to handle
+                        // nested parens, and leave the matching closing paren
+                        // as is.
+                        if (expr[i + 1] == '?')
+                        {
+                            i++;
+                            Escape();
+                            if (i < expr.Length && expr[i] == ')')
+                                i++;
+                            continue;
+                        }
+
+                        // Otherwise, escape the paren, recurse to take care of
+                        // nested parens, and escape the corresponding closing
+                        // paren, if there is one.
+                        expr = expr[..i] + "\\" + expr[i..];
+                        i += 2;
+                        Escape();
+
+                        if (i < expr.Length && expr[i] == ')')
+                        {
+                            expr = expr[..i] + "\\" + expr[i..];
+                            i += 2;
+                        }
+                    }
+                }
+            }
+
+            foreach (char c in state.LiteralCharacters)
+                expr = expr.Replace($"{c}", $"\\{c}");
+
+            return expr;
         }
     }
 
@@ -168,6 +296,13 @@ public sealed class CanalContext(DiagnosticEngine diag, CanalOptions options, So
         {
             Diag.Emit(DiagnosticLevel.Error, $"No run ('{_nameMap[CanalDirective.Run]}', '{_nameMap[CanalDirective.Verify]}' or '{_nameMap[CanalDirective.ExpectFail]}') directives found in check file.");
             return;
+        }
+
+        foreach (var test in _runDirectives)
+        {
+            RunTest(test);
+            if (Diag.HasEmittedErrors && Options.AbortOnFirstFailedCheck)
+                break;
         }
     }
 
@@ -236,6 +371,26 @@ public sealed class CanalContext(DiagnosticEngine diag, CanalOptions options, So
         StringView processName = ((StringView)commandText).TakeUntil(char.IsWhiteSpace);
         StringView arguments = ((StringView)commandText)[processName.Length..].TrimStart();
 
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && processName == "cat")
+        {
+            try
+            {
+                return new CanalTestResult()
+                {
+                    Success = true,
+                    Output = File.ReadAllText((string)arguments),
+                };
+            }
+            catch (Exception ex)
+            {
+                return new CanalTestResult()
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                };
+            }
+        }
+
         var startInfo = new ProcessStartInfo((string)processName, (string)arguments)
         {
             RedirectStandardOutput = true,
@@ -243,7 +398,7 @@ public sealed class CanalContext(DiagnosticEngine diag, CanalOptions options, So
 
         try
         {
-            var process = Process.Start(startInfo);
+            var process = System.Diagnostics.Process.Start(startInfo);
             if (process == null)
             {
                 return new CanalTestResult()
