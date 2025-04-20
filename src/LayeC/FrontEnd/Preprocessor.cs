@@ -197,6 +197,7 @@ public sealed class Preprocessor
             "__has_include_next",
             "__has_cpp_attribute",
             "_Pragma",
+            "__pragma",
             "defined",
         };
     }
@@ -507,6 +508,63 @@ public sealed class Preprocessor
             return HandlePragmaC(true, lexer, ppToken, directiveToken);
         }
 
+        if (ppToken.Kind == TokenKind.CPPIdentifier && ppToken.StringValue == "__pragma")
+        {
+            if (!LanguageOptions.CIsMSVCMode)
+                Context.ExtMicrosoftPragma(ppToken.Source, ppToken.Location);
+
+            Token openParenToken = ReadTokenRaw();
+            if (openParenToken.Kind != TokenKind.OpenParen)
+            {
+                Context.ErrorExpectedToken(openParenToken.Source, openParenToken.Location, "'('");
+                return Preprocess(openParenToken);
+            }
+
+            List<Token> tokens = new();
+            int parenNesting = 1;
+
+            while (true)
+            {
+                if (NextRawPPToken.IsAtStartOfLine)
+                    break;
+
+                Token token = ReadTokenRaw();
+                if (token.Kind == TokenKind.CloseParen)
+                {
+                    parenNesting--;
+                    if (parenNesting <= 0)
+                        break;
+                }
+                else if (token.Kind == TokenKind.OpenParen)
+                {
+                    parenNesting++;
+                }
+                else if (token.Kind == TokenKind.EndOfFile)
+                    break;
+
+                tokens.Add(token);
+            }
+
+            Token lastToken = (tokens.Count > 0) ? tokens.Last() : openParenToken;
+            if (parenNesting > 0)
+            {
+                Context.ErrorExpectedMatchingCloseDelimiter(
+                    openParenToken.Source,
+                    '(', ')',
+                    lastToken.Range.End,
+                    openParenToken.Location
+                );
+            }
+
+            Token directiveEndToken = new Token(TokenKind.CPPDirectiveEnd, SourceLanguage.C, lastToken.Source, new(lastToken.Range.End, lastToken.Range.End));
+            tokens.Add(directiveEndToken);
+
+            BufferTokenStream tokenStream = new(tokens);
+            PushTokenStream(tokenStream);
+            HandlePragmaDirective(SourceLanguage.C, ppToken, ppToken);
+            return null;
+        }
+
         if (ppToken.Kind == TokenKind.CPPIdentifier && ppToken.StringValue == "_Pragma")
         {
             Token openParenToken = ReadTokenRaw();
@@ -530,7 +588,7 @@ public sealed class Preprocessor
                 return Preprocess(closeParenToken);
             }
 
-            SourceText source = new("<pragma>", pragmaStringToken.StringValue.ToString() + "\n", SourceLanguage.C);
+            SourceText source = new("<pragma>", pragmaStringToken.StringValue.ToString(), SourceLanguage.C);
             Lexer lexer = new(Context, source, LanguageOptions);
             using (lexer.PushMode(LexerState.CPPWithinDirective))
             {
