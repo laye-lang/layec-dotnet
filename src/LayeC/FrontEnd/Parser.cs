@@ -20,7 +20,10 @@ public abstract class Parser(CompilerContext context, LanguageOptions languageOp
     public Token CurrentToken => PeekToken(0);
 
     private SourceLocation _lastValidLocation;
-    public SourceLocation CurrentLocation => !IsAtEnd ? CurrentToken.Location : _lastValidLocation;
+
+    public SourceText CurrentSource => !IsAtEnd ? CurrentToken.Source : Source;
+    public SourceRange CurrentRange => !IsAtEnd ? CurrentToken.Range : new(_lastValidLocation, _lastValidLocation);
+    public SourceLocation CurrentLocation => CurrentRange.Begin;
 
     private void InternalAdvance()
     {

@@ -236,6 +236,11 @@ public sealed class CompilerContext(IDiagnosticConsumer diagConsumer, Target tar
         return _semanticLevels[semantic];
     }
 
+    public Diagnostic EmitDiagnostic(DiagnosticSemantic semantic, string id, string message)
+    {
+        return Diag.Emit(MapSemantic(semantic, id), message);
+    }
+
     public Diagnostic EmitDiagnostic(DiagnosticSemantic semantic, string id, SourceText source,
         SourceLocation location, SourceRange[] ranges, string message)
     {

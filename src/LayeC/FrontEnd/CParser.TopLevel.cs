@@ -8,7 +8,7 @@ public sealed partial class CParser
     /// <summary>
     /// Returns false at EOF.
     /// </summary>
-    public bool ParseTopLevel(out SemaDeclGroup declGroup)
+    public bool ParseTopLevel(out SemaDecl decl)
     {
         List<SyntaxCAttribute> declAttrs = [];
         List<SyntaxCAttribute> declSpecAttrs = [];
@@ -17,7 +17,7 @@ public sealed partial class CParser
         {
         }
 
-        declGroup = ParseExternalDeclaration(declAttrs, declSpecAttrs);
+        decl = ParseExternalDeclaration(declAttrs, declSpecAttrs);
         return true;
     }
 }

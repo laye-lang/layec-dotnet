@@ -21,7 +21,7 @@ public static class FrontEndDiagnostics
     public static void ErrorParseUnrecoverable(this CompilerContext context, SourceText source, SourceLocation location, string? note = null)
     {
         context.EmitDiagnostic(DiagnosticSemantic.Error, "0002", source, location, [], "The parser decided it could not recover after an error.");
-        if (note is not null) context.EmitDiagnostic(DiagnosticSemantic.Note, "0002", source, location, [], note);
+        if (note is not null) context.EmitDiagnostic(DiagnosticSemantic.Note, "0002", note);
         context.Diag.Emit(DiagnosticLevel.Fatal, "Terminating the compiler.");
         throw new UnreachableException();
     }
@@ -104,7 +104,7 @@ public static class FrontEndDiagnostics
     public static void ErrorCStylePreprocessingDirective(this CompilerContext context, SourceText source, SourceLocation location)
     {
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3002", source, location, [], "C-style preprocessing directives are not allowed in Laye.");
-        context.EmitDiagnostic(DiagnosticSemantic.Note, "3002", source, location, [], "Use `pragma` for a limited subset of C preprocessor directives.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "3002", "Use `pragma` for a limited subset of C preprocessor directives.");
     }
 
     public static void ErrorExpectedPreprocessorDirective(this CompilerContext context, SourceText source, SourceLocation location) =>
@@ -158,7 +158,7 @@ public static class FrontEndDiagnostics
     public static void WarningPotentialPreprocessorDirectiveInPragmaCExpression(this CompilerContext context, Token token)
     {
         context.EmitDiagnostic(DiagnosticSemantic.Error, "3018", token.Source, token.Location, [], "C preprocessor directives are not processed within 'pragma \"C\" ( )' expressions.");
-        context.EmitDiagnostic(DiagnosticSemantic.Note, "3018", token.Source, token.Location, [], "Did you mean `pragma \"C\" { }`?");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "3018", "Did you mean `pragma \"C\" { }`?");
     }
 
     public static void ErrorConcatenationShouldOnlyResultInOneToken(this CompilerContext context, SourceText source, SourceLocation location) =>
@@ -224,6 +224,12 @@ public static class FrontEndDiagnostics
 
     public static void ErrorDuplicateTypeSpecifier(this CompilerContext context, Token typeSpecToken) =>
         context.EmitDiagnostic(DiagnosticSemantic.Error, "4006", typeSpecToken.Source, typeSpecToken.Location, [], "Duplicate type specifier.");
+
+    public static void ErrorMissingTypeSpecifier(this CompilerContext context, SourceText source, SourceLocation location, SourceRange associatedRange)
+    {
+        context.EmitDiagnostic(DiagnosticSemantic.Error, "4007", source, location, associatedRange.Length != 0 ? [associatedRange] : [], "Missing type specifier.");
+        context.EmitDiagnostic(DiagnosticSemantic.Note, "4007", "ISO C99 and later do not support implicit 'int'.");
+    }
 
     #endregion
 

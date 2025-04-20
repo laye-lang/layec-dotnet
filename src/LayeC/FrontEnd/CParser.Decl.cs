@@ -4,6 +4,7 @@ using LayeC.FrontEnd.Semantics.Decls;
 using LayeC.FrontEnd.Syntax.Decls;
 using LayeC.FrontEnd.Syntax.Meta;
 using LayeC.FrontEnd.Syntax.Types;
+using LayeC.Source;
 
 namespace LayeC.FrontEnd;
 
@@ -36,7 +37,7 @@ public sealed partial class CParser
     /// [GNU]   __extension__ external-declaration
     /// [GNU]   asm-definition:
     ///           simple-asm-expr ';'
-    public SemaDeclGroup ParseExternalDeclaration(List<SyntaxCAttribute> declAttrs, List<SyntaxCAttribute> declSpecAttrs)
+    public SemaDecl ParseExternalDeclaration(List<SyntaxCAttribute> declAttrs, List<SyntaxCAttribute> declSpecAttrs)
     {
         SemaDecl? singleDecl = null;
         switch (CurrentToken.Kind)
@@ -56,7 +57,7 @@ public sealed partial class CParser
             return ParseDeclarationOrFunctionDefinition(declAttrs, declSpecAttrs);
 
         Context.Assert(singleDecl is not null, "Should not have gotten here without building a declaraiton node.");
-        return new SemaDeclGroup(singleDecl);
+        return singleDecl;
     }
 
     public SemaDeclGroup ParseDeclarationOrFunctionDefinition(List<SyntaxCAttribute> declAttrs, List<SyntaxCAttribute> declSpecAttrs)
@@ -133,34 +134,49 @@ public sealed partial class CParser
     {
         //var attrs = new SyntaxCAttributesBuilder();
 
-        Context.Todo(nameof(ParseDeclarationSpecifiers));
-        throw new UnreachableException();
+        var typeSpec = ParseTypeSpecifier(null);
+
+        return new SyntaxCDeclarationSpecifiers(typeSpec);
     }
 
-    public SyntaxCTypeSpecifier ParseTypeSpecifier()
+    public SyntaxCTypeSpecifier ParseTypeSpecifier(Token? relatedToken)
     {
-        var typeSpecTokens = new List<Token>();
+        var parts = new List<SyntaxCTypeSpecifierPart>();
         var typeSpec = CTypeSpecifierKind.Unspecified;
 
-        bool continueChecking = true;
-        while (continueChecking)
+        while (true)
         {
             var ct = CurrentToken;
             switch (ct.Kind)
             {
-                default: continueChecking = false; continue;
+                default: goto done_parsing_type_specs;
 
                 case TokenKind.KWInt:
                 {
-                    typeSpecTokens.Add(Consume());
                     if (typeSpec.HasFlag(CTypeSpecifierKind.Int))
                         Context.ErrorDuplicateTypeSpecifier(ct);
                     typeSpec |= CTypeSpecifierKind.Int;
+                    parts.Add(new SyntaxCTypeSpecifierPartSimple(Consume()));
                 } break;
             }
         }
 
-        Context.Todo(nameof(ParseTypeSpecifier));
-        throw new UnreachableException();
+    done_parsing_type_specs:;
+        var source = parts.Count == 0 ? CurrentSource : parts[0].Source;
+        var range = parts.Count == 0 ? CurrentRange : parts[0].Range;
+
+        if (typeSpec == CTypeSpecifierKind.Unspecified)
+        {
+            Context.Assert(parts.Count == 0, source, range.Begin, "With an unspecified type specifier, the part count should have been zero also.");
+            if (LanguageOptions.CIsC99)
+                Context.ErrorMissingTypeSpecifier(source, range.Begin, relatedToken?.Range ?? SourceRange.Zero);
+            else
+            {
+                typeSpec = CTypeSpecifierKind.Int;
+                parts.Add(new SyntaxCTypeSpecifierPartImplicitInt(CreateMissingToken(range.Begin)));
+            }
+        }
+
+        return new SyntaxCTypeSpecifier(source, range, typeSpec, parts);
     }
 }

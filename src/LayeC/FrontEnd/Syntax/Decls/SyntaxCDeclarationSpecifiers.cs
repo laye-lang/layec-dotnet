@@ -1,5 +1,8 @@
-﻿namespace LayeC.FrontEnd.Syntax.Decls;
+﻿using LayeC.FrontEnd.Syntax.Types;
 
-public sealed class SyntaxCDeclarationSpecifiers
+namespace LayeC.FrontEnd.Syntax.Decls;
+
+public sealed class SyntaxCDeclarationSpecifiers(SyntaxCTypeSpecifier typeSpec)
 {
+    public SyntaxCTypeSpecifier TypeSpecifier { get; } = typeSpec;
 }

@@ -274,7 +274,6 @@ Options:
 
             var debugPrinter = new SyntaxDebugTreePrinter(Options.OutputColoring);
 
-            Context.Todo("Parse C");
             var sema = new Sema(Context, languageOptions);
             var parser = new CParser(sema, inputSource, new BufferTokenStream(sourceTokens));
             var translationUnit = parser.ParseTranslationUnit();
