@@ -92,6 +92,9 @@ public readonly struct StringView(ReadOnlyMemory<char> memory, int hashCode)
         return -1;
     }
 
+    public bool Contains(string s) => IndexOf(s) >= 0;
+    public bool Contains(StringView sv) => IndexOf(sv) >= 0;
+
     public bool StartsWith(char c) => Length > 0 && Span[0] == c;
     public bool StartsWith(string s) => StartsWith(s.AsSpan());
     public bool StartsWith(ReadOnlyMemory<char> m) => StartsWith(m.Span);
